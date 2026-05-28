@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import datetime
 
 # 1. 페이지 레이아웃 및 테마 기본 설정
-st.set_page_config(page_title="탄소중립 뉴스 인텔리전스", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="탄소중립 뉴스 정보 분석 시스템", layout="wide", initial_sidebar_state="expanded")
 
 # 라이브러리 정상 임포트 체크
 try:
@@ -18,19 +18,106 @@ try:
 except ImportError:
     st.error("필수 라이브러리가 부족합니다. GitHub의 requirements.txt 세팅을 확인해주세요.")
 
-# 커스텀 CSS 스타일 주입 (디자인 고도화)
+# 기획예산처 공식 로고 기반 행정 시스템 디자인 주입
 st.markdown("""
     <style>
-    .main-title { font-size: 2.5rem ; font-weight: 800; color: #1E3A8A; margin-bottom: 0.5rem; }
-    .sub-title { font-size: 1.1rem; color: #4B5563; margin-bottom: 2rem; }
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .report-card { background-color: #F3F4F6; padding: 1.5rem; border-radius: 10px; border-left: 5px solid #10B981; margin-bottom: 1rem; }
+    /* 전체 배경 및 기본 폰트 색상 정돈 */
+    .stApp { background-color: #F8FAFC; }
+    h1, h2, h3 { color: #0A2540 !important; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+    
+    /* 공공기관 메인 상단 배너 인프라 (로고 우측 정렬 구조) */
+    .gov-banner-container {
+        background-color: #FFFFFF;
+        padding: 1.5rem 2rem;
+        border-bottom: 3px solid #0A2540;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+    }
+    .gov-logo-area {
+        flex: 0 0 auto;
+        margin-right: 2rem;
+        display: flex;
+        align-items: center;
+        border-right: 1px solid #E2E8F0;
+        padding-right: 2rem;
+    }
+    .gov-text-area {
+        flex: 1 1 auto;
+    }
+    .gov-title { font-size: 2rem; font-weight: 700; color: #0A2540; letter-spacing: -0.05rem; margin: 0; }
+    .gov-subtitle { font-size: 0.95rem; color: #64748B; margin-top: 0.4rem; font-weight: 400; line-height: 1.4; }
+    
+    /* 버튼 스타일 관공서 규격화 */
+    .stButton>button {
+        background-color: #0A2540 !important;
+        color: #FFFFFF !important;
+        border-radius: 3px !important;
+        border: 1px solid #0A2540 !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        background-color: #1E3A8A !important;
+        border-color: #1E3A8A !important;
+    }
+    
+    /* 초기화 버튼 (서브 버튼) 스타일 개별 격리 */
+    div[data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton>button {
+        background-color: #FFFFFF !important;
+        color: #475569 !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton>button:hover {
+        background-color: #F1F5F9 !important;
+    }
+    
+    /* 보고서 카드 스타일 */
+    .report-card {
+        background-color: #FFFFFF;
+        padding: 1.5rem;
+        border-radius: 4px;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #0A2540;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .report-card h4 { margin: 0 0 0.5rem 0; font-size: 1.15rem; color: #0A2540; }
+    
+    /* 사이드바 스타일 공직풍 매핑 */
+    .css-163ttbj, [data-testid="stSidebar"] {
+        background-color: #1E293B !important;
+    }
+    .css-163ttbj .stMarkdown, [data-testid="stSidebar"] .stMarkdown h3 {
+        color: #FFFFFF !important;
+    }
+    label { color: #334155 !important; font-weight: 600 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# 메인 타이틀 배너
-st.markdown('<div class="main-title">🌿 탄소중립 뉴스 스크랩 인텔리전스 시스템</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">AI 기반 실시간 뉴스 수집, 하이브리드 카테고리 분류 및 이미지 포함 레이아웃 보존 PDF 리포팅 에이전트</div>', unsafe_allow_html=True)
+# 메인 행정 헤더 영역 가동 (로고 레이아웃 바인딩)
+# 로고 파일이 app.py와 동일한 루트 디렉토리에 존재하면 최적의 크기(높이 65px)로 가시성을 확보합니다.
+logo_html_content = ""
+if os.path.exists("logo.png"):
+    import base64
+    with open("logo.png", "rb") as f:
+        encoded_logo = base64.b64encode(f.read()).decode()
+    logo_html_content = f'<div class="gov-logo-area"><img src="data:image/png;base64,{encoded_logo}" style="height: 65px; width: auto; object-fit: contain;"></div>'
+else:
+    logo_html_content = '<div class="gov-logo-area" style="font-weight:bold; color:#0A2540; font-size:1.3rem;">🏛️ 기획예산처</div>'
+
+st.markdown(f"""
+    <div class="gov-banner-container">
+        {logo_html_content}
+        <div class="gov-text-area">
+            <div class="gov-title">탄소중립 뉴스 정보 분석 시스템</div>
+            <div class="gov-subtitle">본 시스템은 국가 기후변화 및 탄소중립 정책 수립 지원을 위해 실시간 언론 보도 자료를 수집·요약하는 공공 목적의 인텔리전스 프레임워크입니다.</div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # 2. 세션 상태 데이터 유지 보장
 if "scraped_data" not in st.session_state:
@@ -41,7 +128,7 @@ LARGE_CATEGORIES = ["배출권", "탄소시장", "탄소세", "ESG", "전기차"
 SMALL_CATEGORIES = ["자발적 탄소시장", "국제감출", "탄소제거", "기후공시", "전환금융", "녹색금융", "재생에너지", "기후테크", "온실가스"]
 
 # 3. 사이드바 제어 패널 설계
-st.sidebar.markdown("### 🔑 API 자격 증명")
+st.sidebar.markdown("### 🔒 시스템 자격 인증")
 secrets_id = st.secrets.get("NAVER_CLIENT_ID", "")
 secrets_secret = st.secrets.get("NAVER_CLIENT_SECRET", "")
 secrets_openai = st.secrets.get("OPENAI_API_KEY", "")
@@ -51,9 +138,8 @@ naver_client_secret = st.sidebar.text_input("네이버 Client Secret", value=sec
 openai_api_key = st.sidebar.text_input("OpenAI API Key", value=secrets_openai, type="password")
 
 st.sidebar.write("---")
-st.sidebar.markdown("### 🎯 확장된 타겟 키워드 목록")
+st.sidebar.markdown("### 🎯 조사 대상 지정 키워드")
 
-# 26개 확장 키워드 리스트 전면 영구 적용
 extended_keywords = [
     "탈탄소", "탄소중립", "넷제로", "ghg", "온실가스", "탄소배출", "배출권", 
     "배출권거래제", "탄소배출권", "ETS", "탄소세", "탄소시장", "IAA", 
@@ -63,16 +149,14 @@ extended_keywords = [
 ]
 
 target_keywords = st.sidebar.multiselect(
-    "수집 및 분석을 진행할 키워드를 선택/편집하세요", 
+    "범정부 모니터링 키워드 선택", 
     options=extended_keywords, 
     default=extended_keywords
 )
 
-# 4. 파일네임 특수문자 예외 처리 전처리 함수 (\ / : * ? " < > | 공백 치환)
+# 4. 파일네임 특수문자 예외 처리 전처리 함수
 def clean_filename(filename):
-    # 탐색기 가시성을 위해 요구사항에 맞춤 설계 수행
     cleaned = re.sub(r'[\s\\/:*?"<>|]+', '_', filename)
-    # 확장자 중복 방지 처리
     if cleaned.endswith("__pdf") or cleaned.endswith("_pdf"):
         cleaned = cleaned.rsplit('_', 1)[0]
     if not cleaned.endswith(".pdf"):
@@ -82,7 +166,6 @@ def clean_filename(filename):
 # 5. 연관어 가중치가 포함된 고도화 하이브리드 매칭 엔진
 def classify_category(title, content, openai_client=None):
     text = f"{title} {content}".lower()
-    
     large_counts = {cat: text.count(cat.lower()) for cat in LARGE_CATEGORIES}
     small_counts = {cat: text.count(cat.lower()) for cat in SMALL_CATEGORIES}
     
@@ -127,21 +210,21 @@ def classify_category(title, content, openai_client=None):
 # 6. OpenAI 기반 5줄 이내 핵심 요약 함수
 def summarize_content(title, content, openai_client):
     if not openai_client:
-        return "💡 OpenAI API Key가 입력되지 않아 요약을 제공하지 않습니다."
+        return "💡 OpenAI API Key가 입력되지 않아 행정 요약문을 도출할 수 없습니다."
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "너는 기후경제 뉴스 전문 브리핑 에이전트야. 제공된 뉴스 본문을 정독하고 핵심 요점만 간추려서 '반드시 5줄 이내의 문장'으로 가독성 좋게 요약해줘. 마크다운 글머리기호(-) 포맷을 적용해줘."},
+                {"role": "system", "content": "너는 대한민국 공공기관의 기후경제 담당 서기관이야. 제공된 뉴스 본문을 정독하여 주요 정부 시사점과 객관적 팩트 위주로 '반드시 5줄 이내의 문장'으로 정갈하게 요약해줘. 명조계열 보고서 서식처럼 개조식 개요 형태(- 문장형태)로 출력해줘."},
                 {"role": "user", "content": f"제목: {title}\n본문: {content}"}
             ],
-            temperature=0.2
+            temperature=0.1
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"❌ 요약 데이터 생성 실패: {str(e)}"
+        return f"❌ 요약 실패: {str(e)}"
 
-# 7. 사내 방화벽 대비용 하이브리드 뉴스 수집 엔진
+# 7. 네트워크 예외 대비 하이브리드 수집 로직
 def fetch_news_hybrid(keyword, client_id, client_secret):
     if client_id and client_secret:
         url = f"https://openapi.naver.com/v1/search/news.json?query={keyword}&display=3&sort=sim"
@@ -153,7 +236,6 @@ def fetch_news_hybrid(keyword, client_id, client_secret):
         except Exception:
             pass
             
-    # 사내 네트워크 차단 시 백업 일반 검색 크롤러 기동
     scraped_items = []
     try:
         search_url = f"https://search.naver.com/search.naver?where=news&query={keyword}"
@@ -191,9 +273,8 @@ def crawl_naver_news_article(url):
             return article_body.get_text(strip=True)
     except Exception:
         pass
-    return "본문 텍스트 자동 스크랩 제한 기사입니다. PDF 원문 저장을 이용해 확인하세요."
+    return "본문 텍스트 자동 스크랩 제한 기사입니다. PDF 원문 출력을 이용하십시오."
 
-# Playwright 활용 이미지 및 원문 레이아웃 보존 PDF 변환 엔진
 def convert_url_to_pdf(url):
     try:
         with sync_playwright() as p:
@@ -207,30 +288,30 @@ def convert_url_to_pdf(url):
     except Exception:
         return None
 
-# --- 대시보드 코어 작동 로직 ---
+# --- 대시보드 데이터 제어 로직 ---
 
-# 상단 현황판 위젯 배치 (Metrics)
+# 상단 종합 지표 대시보드
 if st.session_state.scraped_data:
     df_metrics = pd.DataFrame(st.session_state.scraped_data)
     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("📊 총 수집 기사 수", f"{len(df_metrics)} 건")
-    m_col2.metric("🏷️ 매칭 대분류군", f"{len(df_metrics['대분류'].unique())} 개")
-    m_col3.metric("🏢 참여 언론사 수", f"{len(df_metrics['언론사'].unique())} 사")
-    m_col4.metric("📅 동기화 시각", datetime.now().strftime('%H:%M:%S'))
-    st.write("---")
+    m_col1.metric("📊 누적 수집 보도 건수", f"{len(df_metrics)} 건")
+    m_col2.metric("🏷️ 매칭 대분류 지표", f"{len(df_metrics['대분류'].unique())} 종")
+    m_col3.metric("🏢 모니터링 언론사", f"{len(df_metrics['언론사'].unique())} 개사")
+    m_col4.metric("📅 최종 동기화 시각", datetime.now().strftime('%Y-%m-%d %H:%M'))
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# 실행 제어 버튼
-c1, c2 = st.columns([3, 1])
+# 주요 행정 명령 제어판
+c1, c2 = st.columns([3.5, 1])
 with c1:
-    start_button = st.button("🔄 확장 키워드 기반 전면 스크랩 및 AI 분석 가동", type="primary", use_container_width=True)
+    start_button = st.button("🏛️ 범정부 탄소중립 보도자료 종합 수집 및 AI 분석 가동", use_container_width=True)
 with c2:
-    if st.button("🧹 데이터 초기화"):
+    if st.button("🧹 수집 데이터 초기화", use_container_width=True):
         st.session_state.scraped_data = []
         st.rerun()
 
 if start_button:
     if not target_keywords:
-        st.warning("⚠️ 검색할 키워드가 선택되지 않았습니다. 사이드바 패널을 조정해 주세요.")
+        st.warning("⚠️ 모니터링 대상 키워드가 지정되지 않았습니다.")
     else:
         openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
         all_scraped = []
@@ -239,15 +320,14 @@ if start_button:
         status_notification = st.empty()
         
         for idx, keyword in enumerate(target_keywords):
-            status_notification.info(f"🚀 현재 수집 중인 기후 에너지 키워드: **[{keyword}]** (진행률: {idx+1}/{len(target_keywords)})")
+            status_notification.info(f"📋 공적 데이터 수집 중: 키워드 **[{keyword}]** (진행률: {idx+1}/{len(target_keywords)})")
             items = fetch_news_hybrid(keyword, naver_client_id, naver_client_secret)
             
             for item in items:
                 title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&apos;", "'")
                 link = item['link']
-                press = item['originallink'].split('//')[-1].split('/')[0] if 'originallink' in item else "뉴스포털"
+                press = item['originallink'].split('//')[-1].split('/')[0] if 'originallink' in item else "언론기관"
                 
-                # 중복 수집 주소 방지 로직
                 if any(x['URL'] == link for x in all_scraped):
                     continue
                 
@@ -259,7 +339,7 @@ if start_button:
                 large_cat, small_cat = classify_category(title, content, openai_client)
                 summary = summarize_content(title, content, openai_client)
                 
-                # 스크린샷과 동일한 완벽한 명명 규칙 바인딩
+                # (대분류)(소분류)기사제목_언론사 포맷 생성 규칙 바인딩
                 raw_filename = f"({large_cat})({small_cat}){title}_{press}"
                 safe_filename = clean_filename(raw_filename)
                 
@@ -272,22 +352,20 @@ if start_button:
                     "본문": content,
                     "파일명": safe_filename,
                     "5줄요약": summary,
-                    "PDF상태": "⏳ 준비 완료"  # 실시간 상태 인디케이터 초기값 설정
+                    "PDF상태": "⏳ 대기 중"
                 })
             progress_bar.progress((idx + 1) / len(target_keywords))
             
-        status_notification.success("🎉 모든 지정 키워드의 실시간 리포트 셋업이 완료되었습니다!")
+        status_notification.success("🎉 뉴스 스크랩 및 범주화 체계 구축이 완료되었습니다.")
         st.session_state.scraped_data = all_scraped
-        st.toast("뉴스 가동 데이터 수집 완료!", icon="🌿")
         st.rerun()
 
-# 테이블 시각화 프레임 핸들러
+# 행정 보고서 산출물 인프라 영역
 if st.session_state.scraped_data:
     df = pd.DataFrame(st.session_state.scraped_data)
-    st.subheader("📋 실시간 수집 리포트 제어 프레임")
+    st.subheader("📋 국가 기후변화 보도자료 종합 관제 테이블")
     
     df.insert(0, "선택", False)
-    # 테이블 내부에 PDF 빌드 상태 컬럼 추가 노출
     edited_df = st.data_editor(
         df[["선택", "대분류", "소분류", "기사제목", "언론사", "파일명", "PDF상태"]], 
         hide_index=True, 
@@ -296,76 +374,76 @@ if st.session_state.scraped_data:
     )
     selected_indices = edited_df[edited_df["선택"] == True].index.tolist()
     
-    # 탭 분할 상세 인포 컴포넌트
+    # 공문서 심층 검토용 탭 분할 아키텍처
     if selected_indices:
         st.write("---")
-        st.subheader("🔍 선택 기사 상세 AI 인텔리전스 인프라")
+        st.subheader("🔍 주요 안건별 행정 분석 및 AI 요약 보고")
         for idx in selected_indices:
             row = st.session_state.scraped_data[idx]
-            st.markdown(f'<div class="report-card"><h4>🏷️ [{row["대분류"]} / {row["소분류"]}] {row["기사제목"]} <small style="color:#6B7280;">({row["언론사"]})</small></h4></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="report-card"><h4>📌 [{row["대분류"]} / {row["소분류"]}] {row["기사제목"]} <small style="color:#64748B; font-weight:normal;"> - {row["언론사"]}</small></h4></div>', unsafe_allow_html=True)
             
-            tab1, tab2 = st.tabs(["📋 OpenAI 기반 5줄 요약 보고서", "📰 수집된 본문 텍스트 미리보기"])
+            tab1, tab2 = st.tabs(["📋 AI 정책 분석 요약문 (5줄 이내)", "📰 보도자료 수집 원문 데이터"])
             with tab1:
                 st.markdown(row['5줄요약'])
-                st.caption(f"🔗 원문 주소 확인하기: {row['URL']}")
+                st.caption(f"🌐 데이터 출처 관제 주소: {row['URL']}")
             with tab2:
                 st.write(row['본문'][:1500] + ("..." if len(row['본문']) > 1500 else ""))
                 
-    # PDF 내보내기 모듈 익스포터
+    # PDF 산출물 행정 익스포터
     st.write("---")
-    st.subheader("🗂️ 리포트 파일 내보내기 익스포터")
+    st.subheader("🗂️ 기후에너지 정책 보고서 파일 익스포트")
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📥 선택한 기사만 고화질 PDF (이미지 포함) ZIP 다운로드"):
+        if st.button("📥 선택한 안건 문서 고화질 PDF (이미지 포함) ZIP 생성"):
             if not selected_indices:
-                st.warning("테이블 좌측 체크박스에서 내보낼 기사들을 체크해 주세요.")
+                st.warning("선택 항목 관제 테이블에서 출력할 기사를 선택해 주십시오.")
             else:
                 zip_buffer = io.BytesIO()
                 status_track = st.empty()
                 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                     for i, idx in enumerate(selected_indices):
                         item = st.session_state.scraped_data[idx]
-                        status_track.info(f"⏳ ({i+1}/{len(selected_indices)}) [{item['언론사']}] 기사 PDF 빌드 중...")
+                        status_track.info(f"⏳ (프로세스 {i+1}/{len(selected_indices)}) [{item['언론사']}] 행정 PDF 빌드 및 전자 서식 보존 인쇄 중...")
                         
                         pdf_bytes = convert_url_to_pdf(item['URL'])
                         if pdf_bytes:
                             zip_file.writestr(item['파일명'], pdf_bytes)
-                            st.session_state.scraped_data[idx]["PDF상태"] = "✅ 변환 성공"
+                            st.session_state.scraped_data[idx]["PDF상태"] = "✅ 출력 성공"
                         else:
-                            st.session_state.scraped_data[idx]["PDF상태"] = "❌ 변환 실패"
+                            st.session_state.scraped_data[idx]["PDF상태"] = "❌ 출력 실패"
                 
-                status_track.success("✨ 선택한 모든 기사의 PDF 변환 및 압축이 완수되었습니다!")
+                status_track.success("✨ 선택된 안건 보도자료의 PDF 포맷 가공 절차가 완료되었습니다.")
                 st.download_button(
-                    label="💾 [다운로드 완료] 선택 기사 PDF 리포트.zip",
+                    label="💾 [다운로드] 선택 안건 PDF 리포트 파일셋.zip",
                     data=zip_buffer.getvalue(),
-                    file_name=f"선택뉴스_인텔리전스_PDF_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+                    file_name=f"정부_탄소중립_선택리포트_{datetime.now().strftime('%Y%m%d')}.zip",
                     mime="application/zip",
                     use_container_width=True
                 )
                 
     with col2:
-        if st.button("🗂️ 수집된 전체 기사 고화질 PDF 일괄 ZIP 다운로드"):
+        if st.button("🗂️ 수집된 전체 보도자료 고화질 PDF 일괄 ZIP 내보내기"):
             zip_buffer = io.BytesIO()
             status_track = st.empty()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for i, item in enumerate(st.session_state.scraped_data):
-                    status_track.info(f"⏳ ({i+1}/{len(st.session_state.scraped_data)}) [{item['언론사']}] 전체 리포트 PDF 인쇄 중...")
+                    status_track.info(f"⏳ (프로세스 {i+1}/{len(st.session_state.scraped_data)}) [{item['언론사']}] 공공 서식화 일괄 인쇄 처리 중...")
                     
                     pdf_bytes = convert_url_to_pdf(item['URL'])
                     if pdf_bytes:
                         zip_file.writestr(item['파일명'], pdf_bytes)
-                        item["PDF상태"] = "✅ 변환 성공"
+                        item["PDF상태"] = "✅ 출력 성공"
                     else:
-                        item["PDF상태"] = "❌ 변환 실패"
+                        item["PDF상태"] = "❌ 출력 실패"
             
-            status_track.success("✨ 모든 뉴스 데이터의 전체 PDF 가공이 완료되었습니다!")
+            status_track.success("✨ 모니터링된 전 건의 PDF 전산 서식화 인쇄가 완료되었습니다.")
             st.download_button(
-                label="💾 [다운로드 완료] 전체 기사 PDF 리포트.zip",
+                label="💾 [다운로드] 전체 안건 PDF 리포트 파일셋.zip",
                 data=zip_buffer.getvalue(),
-                file_name=f"전체뉴스_인텔리전스_PDF_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+                file_name=f"정부_탄소중립_전체리포트_{datetime.now().strftime('%Y%m%d')}.zip",
                 mime="application/zip",
                 use_container_width=True
             )
 else:
-    st.info("💡 좌측 패널의 확장 키워드 목록을 확인하신 후 [확장 키워드 기반 전면 스크랩 및 AI 분석 가동] 버튼을 누르시면 자동 수집이 시작됩니다.")
+    st.info("💡 모니터링 대상 설정값을 검토하신 후 상단의 [범정부 탄소중립 보도자료 종합 수집 및 AI 분석 가동] 단추를 클릭하시면 정식 분석 공정이 수립됩니다.")
