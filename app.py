@@ -9,7 +9,7 @@ from datetime import datetime
 # 1. 페이지 레이아웃 및 정부 표준 테마 설정
 st.set_page_config(page_title="탄소중립정책과 기사 분석 에이전트", layout="wide", initial_sidebar_state="expanded")
 
-# 라이브러리 임포트 및 예외 처리
+# 라이브러리 정상 로드 체크 및 예외 처리
 try:
     import requests
     from bs4 import BeautifulSoup
@@ -17,34 +17,23 @@ try:
 except ImportError:
     st.error("⚠️ 필수 라이브러리가 부족합니다. GitHub의 requirements.txt 환경을 확인해주세요.")
 
-# 기획예산처 공식 가이드라인 기반 UI/UX 스타일 주입
+# 기획예산처 공식 가이드라인 기반 UI/UX 디자인 요소 주입
 st.markdown("""
     <style>
     /* 전체 공적 배경 및 서체 정돈 */
     .stApp { background-color: #F8FAFC; }
     h1, h2, h3, h4 { color: #0A2540 !important; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
     
-    /* 3. 중앙 상단 행정 배너 및 타이틀 레이아웃 (아이콘 배제, 정부 상징 로고 전용 공간) */
+    /* 3. 중앙 상단 행정 배너 프레임 */
     .gov-banner-container {
         background-color: #FFFFFF;
-        padding: 1.6rem 2.2rem;
+        padding: 1.5rem;
         border-bottom: 3px solid #0A2540;
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         margin-bottom: 2rem;
-        display: flex;
-        align-items: center;
     }
-    .gov-logo-area {
-        flex: 0 0 auto;
-        margin-right: 2rem;
-        display: flex;
-        align-items: center;
-        border-right: 1px solid #E2E8F0;
-        padding-right: 2rem;
-    }
-    .gov-text-area { flex: 1 1 auto; }
-    .gov-title { font-size: 2.1rem; font-weight: 700; color: #0A2540; letter-spacing: -0.06rem; margin: 0; }
+    .gov-title { font-size: 2.2rem; font-weight: 700; color: #0A2540; letter-spacing: -0.06rem; margin: 0; }
     .gov-subtitle { font-size: 0.95rem; color: #64748B; margin-top: 0.4rem; font-weight: 400; line-height: 1.5; }
     
     /* 1. 키워드 선택창 및 멀티셀렉트 색상 통일 (#0A2540 네이비) */
@@ -107,26 +96,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 기획예산처 로고 주입 및 예외 처리 아키텍처
-logo_html_content = ""
-if os.path.exists("logo.png"):
-    import base64
-    with open("logo.png", "rb") as f:
-        encoded_logo = base64.b64encode(f.read()).decode()
-    logo_html_content = f'<div class="gov-logo-area"><img src="data:image/png;base64,{encoded_logo}" style="height: 55px; width: auto; object-fit: contain;"></div>'
-else:
-    logo_html_content = '<div class="gov-logo-area" style="font-weight:bold; color:#0A2540; font-size:1.4rem; letter-spacing:-0.1rem;">🏛️ 기획예산처</div>'
+# 2 & 3. 네이티브 레이아웃 기반 로고 출력 및 명칭 변경
+st.markdown('<div class="gov-banner-container">', unsafe_allow_html=True)
+logo_col, text_col = st.columns([1, 3.5])
 
-# 3. 중앙 상단 타이틀 명칭 변경 적용
-st.markdown(f"""
-    <div class="gov-banner-container">
-        {logo_html_content}
-        <div class="gov-text-area">
-            <div class="gov-title">탄소중립정책과 기사 분석 에이전트</div>
-            <div class="gov-subtitle">본 시스템은 기획예산처 탄소중립정책과의 업무 효율화를 위해 실시간 언론 보도 자료를 다량 수집, 검증하고 빅데이터 기반의 동향 분석 보고서를 자동 생성하는 공정형 행정 인텔리전스입니다.</div>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+with logo_col:
+    if os.path.exists("logo.png"):
+        # 이미지 가로 왜곡을 완전히 방지하고 정출처 스케일링 보장
+        st.image("logo.png", use_container_width=True)
+    else:
+        st.markdown("<h3 style='margin:0; padding-top:10px; color:#0A2540;'>🏛️ 기획예산처</h3>", unsafe_allow_html=True)
+
+with text_col:
+    st.markdown("""
+        <div class="gov-title" style="padding-top: 5px;">탄소중립정책과 기사 분석 에이전트</div>
+        <div class="gov-subtitle">본 시스템은 기획예산처 탄소중립정책과의 업무 효율화를 위해 실시간 언론 보도 자료를 다량 수집, 검증하고 빅데이터 기반의 동향 분석 보고서를 자동 생성하는 공정형 행정 인텔리전스입니다.</div>
+    """, unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # 세션 데이터 보존 스토리지
 if "scraped_data" not in st.session_state:
@@ -144,7 +130,7 @@ openai_api_key = st.sidebar.text_input("OpenAI API Key", value=st.secrets.get("O
 st.sidebar.write("---")
 st.sidebar.markdown("### 🎯 범정부 모니터링 키워드")
 
-# 복구된 25개 전체 정책 키워드 풀
+# 복구된 25개 전체 정책 키워드 풀 (요청하신 대로 누락 없이 완전 배치)
 extended_keywords = [
     "탈탄소", "탄소중립", "넷제로", "ghg", "온실가스", "탄소배출", "배출권", 
     "배출권거래제", "탄소배출권", "ETS", "탄소세", "탄소시장", "IAA", 
@@ -165,26 +151,25 @@ def clean_filename(filename):
         cleaned += ".hwp"
     return cleaned
 
-# 4. 타임아웃 및 누락을 방지하는 안정적 뉴스 다량 수집 엔진
+# 4. 타임아웃 오류 및 누락을 차단하는 고성능 실시간 대량 수집 엔진
 def fetch_mass_news_stable(keywords, client_id, client_secret):
     scraped_items = []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     for kw in keywords:
-        # 네이버 OpenAPI 연동 우선 시도 (실패 시 일반 크롤링 백업 백코딩)
+        # 네이버 OpenAPI 호출 (타임아웃 및 요청 실패 완벽 대처 구조)
         if client_id and client_secret:
-            # 다량 수집을 위해 display 개수를 최대치(50건)로 상향 조정
             url = f"https://openapi.naver.com/v1/search/news.json?query={kw}&display=50&sort=sim"
             headers_api = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
             try:
-                res = requests.get(url, headers=headers_api, timeout=5)
+                res = requests.get(url, headers=headers_api, timeout=7) # 타임아웃 7초로 넉넉하게 상향
                 if res.status_code == 200:
                     items = res.json().get('items', [])
                     for item in items:
-                        title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"')
+                        title = item['title'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&")
                         link = item['link']
                         press = item.get('originallink', '언론사').split('//')[-1].split('/')[0]
-                        desc = item['description'].replace("<b>", "").replace("</b>", "")
+                        desc = item['description'].replace("<b>", "").replace("</b>", "").replace("&quot;", '"')
                         
                         if not any(x['URL'] == link for x in scraped_items):
                             scraped_items.append({"title": title, "link": link, "press": press, "description": desc, "keyword": kw})
@@ -192,9 +177,9 @@ def fetch_mass_news_stable(keywords, client_id, client_secret):
             except Exception:
                 pass
         
-        # API 미입력 또는 타임아웃 발생 시 크롤링으로 다량 우회 수집
+        # API 미입력 또는 타임아웃/통신 지연 시 정밀 BeautifulSoup 크롤링 자동 백업 우회
         try:
-            for page in range(2): # 다량 수집을 위해 2개 페이지 파싱
+            for page in range(3): # 페이지당 10건씩 총 30건 심층 획득 루프
                 start_num = (page * 10) + 1
                 search_url = f"https://search.naver.com/search.naver?where=news&query={kw}&start={start_num}"
                 res = requests.get(search_url, headers=headers, timeout=5)
@@ -230,20 +215,20 @@ def crawl_article_body_stable(url):
     return "본문 데이터 추출 제한 기사입니다. 제공된 출처 링크를 참조하십시오."
 
 def classify_and_summarize(title, content, openai_client):
-    # 의존성 에러 완전 방어 규칙 바인딩
-    if not openai_client:
-        return "탄소중립", "일반", "- OpenAI API Key를 입력하시면 정교한 보고서용 3줄 개조식 요약이 생성됩니다."
+    # NameError 및 미정의 오류 완벽 원천 차단
+    if openai_client is None:
+        return "탄소중립", "일반", "- OpenAI API Key를 입력하시면 정교한 보고서용 3줄 개조식 요약이 자동 수립됩니다."
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "너는 기획예산처의 탄소중립정책과 분석관이야. 기사 제목과 본문을 분석해 대분류군, 소분류군을 한 단어씩 선택하고 기사 내용을 공문서 지침에 맞춰 3줄의 개조식(- 문장형태)으로 요약해줘.\n출력 형식:\n대분류: 단어\n소분류: 단어\n요약:\n- 요약내용1\n- 요약내용2\n- 요약내용3"},
+                {"role": "system", "content": "너는 기획예산처의 탄소중립정책과 전문 기사 분석관이야. 기사 제목과 본문을 분석해 대분류군, 소분류군을 한 단어씩 선택하고 기사 내용을 공문서 지침에 맞춰 정확히 3줄의 개조식(- 문장형태)으로 요약해줘.\n출력 형식:\n대분류: 단어\n소분류: 단어\n요약:\n- 요약내용1\n- 요약내용2\n- 요약내용3"},
                 {"role": "user", "content": f"제목: {title}\n본문: {content[:800]}"}
             ],
             temperature=0.2
         )
         res_text = response.choices[0].message.content.strip()
-        large_cat, small_cat, summary = "탄소중립", "일반", "- 요약문 도출 실패"
+        large_cat, small_cat, summary = "탄소중립", "일반", "- 요약 데이터 파싱 실패"
         
         lines = res_text.split("\n")
         summary_lines = []
@@ -255,9 +240,9 @@ def classify_and_summarize(title, content, openai_client):
             summary = "\n".join(summary_lines)
         return large_cat, small_cat, summary
     except Exception:
-        return "탄소중립", "일반", "- 분석 엔진 네트워크 일시 지연 오류"
+        return "탄소중립", "일반", "- 분석 엔진 연동 일시 오류"
 
-# 6. 공문서 표준 한글(HWP) 서식 텍스트 파일 생성기
+# 6. 공문서 표준 한글(HWP) 서식 인코딩 파일 변환기
 def generate_hwp_text_file(row_data):
     hwp_template = f"""[기획예산처 탄소중립정책과 - 행정 보도 요약 보고서]
 
@@ -276,10 +261,10 @@ def generate_hwp_text_file(row_data):
 """
     return io.BytesIO(hwp_template.encode('utf-8'))
 
-# 7. 주간/월간 탄소중립 동향 보고서 (빅데이터 마스터 요약 모듈)
+# 7. 주간/월간 탄소중립 동향 보고서 (빅데이터 종합 분석 엔진)
 def generate_weekly_trend_summary(data_list, openai_client):
-    if not openai_client:
-        return "💡 OpenAI API Key가 제공되지 않아 빅데이터 동향 종합 브리핑을 추출할 수 없습니다."
+    if openai_client is None:
+        return "💡 OpenAI API Key가 제공되지 않아 빅데이터 동향 종합 브리핑을 도출할 수 없습니다."
     
     context = ""
     for idx, d in enumerate(data_list[:15]):
@@ -289,27 +274,27 @@ def generate_weekly_trend_summary(data_list, openai_client):
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "너는 기획예산처의 경제동향 수석 심의관이야. 제공된 다량의 탄소중립 뉴스 요약본 전체를 파악하여, 기획예산처 지휘부에 보고할 금주의 [1. 종합 정책 평가], [2. 주요 리스크 관리 안건], [3. 부처별 예산·정책 대응 제언] 동향 보고서를 개조식(◼︎, ❍, - 기호 사용)으로 정갈하게 작성해줘."},
+                {"role": "system", "content": "너는 기획예산처의 경제동향 수석 심의관이야. 제공된 다량의 탄소중립 뉴스 요약본 세트를 완전 분석하여, 기획예산처 지휘부에 직보할 금주의 [1. 종합 정책 평가], [2. 주요 리스크 관리 안건], [3. 부처별 예산·정책 대응 제언] 동향 보고서를 개조식(◼︎, ❍, - 기호 사용)으로 엄격하고 정갈하게 작성해줘."},
                 {"role": "user", "content": f"수집된 빅데이터 동향 정보셋:\n{context}"}
             ],
             temperature=0.3
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"동향 리포트 구성 중 오류가 발생했습니다: {str(e)}"
+        return f"동향 리포트 구성 중 기술적 지연 발생: {str(e)}"
 
-# --- 제어 인터페이스 설계 및 구동 ---
+# --- 제어 인터페이스 구동 체계 ---
 
-# 8. 정부 맞춤형 키워드 알림 및 이슈 스파이크 감지 엔진
+# 8. 정부 맞춤형 키워드 알림 및 이슈 스파이크 감지 엔진 가동
 if st.session_state.scraped_data:
     df_spike = pd.DataFrame(st.session_state.scraped_data)
     kw_counts = df_spike['수집키워드'].value_counts()
     for kw, count in kw_counts.items():
-        if count >= 6: # 특정 핵심 어젠다에 6건 이상의 보도가 집중될 때 경보 표출
+        if count >= 6: # 특정 핵심 정책 안건에 기사가 집중될 때 스파이크 경보 가동
             st.markdown(f"""
                 <div class="spike-alert">
                     <strong>🚨 [행정 주의보] 탄소중립정책과 이슈 스파이크 감지</strong><br>
-                    현재 <strong>'{kw}'</strong> 관련 정책 보도 자료가 단시간 내에 <strong>{count}건 이상 급증</strong>했습니다. 
+                    현재 <strong>'{kw}'</strong> 관련 정책 보도 자료가 단시간 내에 <strong>{count}건 이상 집중 수집</strong>되었습니다. 
                     기획예산처 예산 심사 및 대외 리스크 관리 부서는 해당 어젠다의 보도 추이를 면밀히 모니터링하시기 바랍니다.
                 </div>
             """, unsafe_allow_html=True)
@@ -319,22 +304,22 @@ col_btn1, col_btn2 = st.columns([4, 1])
 with col_btn1:
     execute = st.button("🏛️ 기획예산처 지정 정책 키워드 기반 다량 뉴스 수집 및 에이전트 분석 가동", use_container_width=True)
 with col_btn2:
-    if st.button("🧹 데이터 초기화", use_container_width=True):
+    if st.button("🧹 전산 데이터 초기화", use_container_width=True):
         st.session_state.scraped_data = []
         st.rerun()
 
 if execute:
-    # 에러 방어용 객체 할당 초기화
+    # 에러 원천 방어용 글로벌 변수 즉시 바인딩 처리
     openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
     
     status_bar = st.empty()
-    status_bar.info("⏳ 포털 다량 수집 엔진 가동 중... 지정하신 모든 정책 키워드의 뉴스를 긁어옵니다.")
+    status_bar.info("⏳ 포털 다량 수집 엔진 가동 중... 지정하신 모든 정책 키워드의 실시간 보도를 긁어옵니다.")
     
-    # 4. 다량 수집 엔진 구동
+    # 4. 고성능 동적 수집 가동
     raw_news = fetch_mass_news_stable(target_keywords, naver_client_id, naver_client_secret)
     
     if not raw_news:
-        status_bar.error("❌ 뉴스 수집에 실패했습니다. 키 값을 확인하거나 잠시 후 다시 시도해주세요.")
+        status_bar.error("❌ 뉴스 수집에 실패했습니다. API 네트워크 지연 상태를 확인하거나 잠시 후 다시 시도해주세요.")
     else:
         status_bar.info(f"🔎 총 {len(raw_news)}건의 정책 보도 소스 확보 완료. 개별 안건 심층 분석 및 행정 요약 수립 중...")
         
@@ -346,6 +331,7 @@ if execute:
             if "데이터 추출 제한" in full_body:
                 full_body = item['description']
                 
+            # 에이전트 분석 모듈 안전 결합
             large_cat, small_cat, summary_text = classify_and_summarize(item['title'], full_body, openai_client)
             
             raw_filename = f"({large_cat})({small_cat}){item['title']}_{item['press']}"
@@ -365,7 +351,7 @@ if execute:
             p_bar.progress((index + 1) / len(raw_news))
             
         st.session_state.scraped_data = analyzed_pool
-        status_bar.success(f"🏛️ 분석 완료. 총 {len(analyzed_pool)}건의 대량 기사 데이터가 안전하게 바인딩되었습니다.")
+        status_bar.success(f"🏛 shrink_layout: 분석 완료. 총 {len(analyzed_pool)}건의 대량 기사 데이터가 안전하게 바인딩되었습니다.")
         st.rerun()
 
 # 5. 수집 결과 및 한눈에 보는 요약정리 화면 표출
