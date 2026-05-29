@@ -8,9 +8,9 @@ from datetime import datetime
 
 # [Premium UI 가이드] 페이지 레이아웃 및 다크/라이트 하이브리드 인텔리전스 테마 세팅
 st.set_page_config(
-    page_title="기획예산처 탄소중립정책과 AI 인텔리전스", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
+    page_title="기획예산처 탄소중립정책과 AI 인텔리전스", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
 )
 
 # 라이브러리 검증 및 로드
