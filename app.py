@@ -111,6 +111,29 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.02);
     }
     
+    /* 9-1. 관제 센터 — 선택 기사 상세 요약 카드 */
+    .focus-summary-card {
+        background: #FFFFFF;
+        padding: 1.4rem 1.8rem;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+        border-top: 4px solid #0A2540;
+        box-shadow: 0 6px 24px rgba(10, 37, 64, 0.06);
+        margin: 0.5rem 0 1.5rem 0;
+    }
+    .focus-summary-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0A2540;
+        margin: 0.4rem 0 0.2rem 0;
+        line-height: 1.45;
+    }
+    .focus-summary-meta {
+        color: #64748B;
+        font-size: 0.88rem;
+        margin-bottom: 0.9rem;
+    }
+    
     /* 9. 스파이크 경고 시스템: 세련된 다크 로즈 경고창 */
     .premium-spike-alert {
         background: #FFF5F5;
@@ -267,10 +290,11 @@ def sync_library_from_bookmarks(data_list, edited_df):
             library_urls.discard(url)
 
 def refresh_scraped_data_from_history():
-    """all_history 중 48시간 이내 기사만 scraped_data(대시보드)에 반영"""
+    """all_history 중 48시간 이내·정책 분석 가능 기사만 scraped_data(대시보드)에 반영"""
     st.session_state.scraped_data = [
         item for item in st.session_state.all_history
         if is_within_48_hours(parse_article_date(item.get("발행일시", "")))
+        and item.get("분석가능여부", "가능") != "광고성"
     ]
 
 def clean_filename(filename):
@@ -372,32 +396,94 @@ def crawl_article_body_stable(url):
         pass
     return "본문 데이터 추출 제한 기사입니다. 제공된 출처 링크를 참조하십시오."
 
+CLASSIFY_SYSTEM_PROMPT = """
+너는 기획예산처의 탄소중립정책과 전문 기사 분석관이야.
+너의 임무는 입력된 뉴스 기사를 분석하여 정책적 가치가 높은 정보만 추출하는 것이다.
+
+[중요 지침 - 필터링 기준]
+1. 광고/홍보성 기사 배제: 특정 기업의 제품 홍보, 보도자료를 그대로 복사한 홍보 기사,
+   금융 상품 가입 유도성 기사는 분석 대상에서 제외하고 '광고성'으로 분류해줘.
+2. 정책적 가치 판단: 단순 사실 나열이 아닌, 정부 정책, 법률 제정, 산업 동향,
+   탄소중립 관련 데이터가 포함된 기사를 우선순위로 분석해.
+
+[출력 형식]
+대분류: 단어
+소분류: 단어
+분석가능여부: [가능 / 광고성]
+요약:
+- 요약내용1
+- 요약내용2
+- 요약내용3
+
+만약 '분석가능여부'가 '광고성'일 경우, 요약 내용 대신 "광고성 기사로 분류되어 분석이 중단되었습니다."라고 출력해줘.
+"""
+
+AD_TITLE_KEYWORDS = [
+    "할인", "이벤트", "가입", "신청", "출시", "론칭", "런칭", "프로모션",
+    "쿠폰", "무료체험", "한정판매", "사전예약", "투자유치", "IPO",
+    "펀드 가입", "대출", "보험 가입", "카드 혜택",
+]
+AD_BODY_KEYWORDS = [
+    "지금 가입", "한정 혜택", "이벤트 참여", "보도자료", "PRNewswire",
+    "제휴 카드", "수수료 면제", "투자 권유", "광고", "협찬",
+]
+
+def is_likely_ad_article(title, content=""):
+    """API 호출 전 규칙 기반 1차 광고성 필터 (비용·노이즈 절감)"""
+    text = f"{title} {content}".lower()
+    title_lower = title.lower()
+    if any(kw in title_lower for kw in AD_TITLE_KEYWORDS):
+        return True
+    ad_hits = sum(1 for kw in AD_BODY_KEYWORDS if kw.lower() in text)
+    if ad_hits >= 2:
+        return True
+    if re.search(r"(지금\s*바로|한정\s*\d+|%\s*할인|최대\s*\d+만원)", text):
+        return True
+    return False
+
 def classify_and_summarize(title, content, openai_client):
+    if is_likely_ad_article(title, content):
+        return "광고", "광고", "광고성 기사로 분류되어 분석이 중단되었습니다.", "광고성"
+
     if openai_client is None:
-        return "탄소중립", "일반", "- OpenAI API Key를 입력하시면 정교한 보고서용 3줄 개조식 요약이 자동 매칭됩니다."
+        return "탄소중립", "일반", "- OpenAI API Key를 입력하시면 정교한 보고서용 3줄 개조식 요약이 자동 매칭됩니다.", "가능"
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "너는 기획예산처의 탄소중립정책과 전문 기사 분석관이야. 기사 제목과 본문을 분석해 대분류군, 소분류군을 한 단어씩 선택하고 기사 내용을 공문서 지침에 맞춰 정확히 3줄의 개조식(- 문장형태)으로 요약해줘.\n출력 형식:\n대분류: 단어\n소분류: 단어\n요약:\n- 요약내용1\n- 요약내용2\n- 요약내용3"},
+                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
                 {"role": "user", "content": f"제목: {title}\n본문: {content[:800]}"}
             ],
             temperature=0.2
         )
         res_text = response.choices[0].message.content.strip()
+
+        if "광고성" in res_text:
+            return "광고", "광고", "광고성 기사로 분류되어 분석이 중단되었습니다.", "광고성"
+
         large_cat, small_cat, summary = "탄소중립", "일반", "- 요약 데이터 파싱 실패"
-        
+        analyzable = "가능"
+
         lines = res_text.split("\n")
         summary_lines = []
         for line in lines:
-            if line.startswith("대분류:"): large_cat = line.split(":", 1)[1].strip()
-            elif line.startswith("소분류:"): small_cat = line.split(":", 1)[1].strip()
-            elif line.startswith("-"): summary_lines.append(line.strip())
+            if line.startswith("대분류:"):
+                large_cat = line.split(":", 1)[1].strip()
+            elif line.startswith("소분류:"):
+                small_cat = line.split(":", 1)[1].strip()
+            elif line.startswith("분석가능여부:"):
+                analyzable = line.split(":", 1)[1].strip().replace("[", "").replace("]", "").strip()
+            elif line.startswith("-"):
+                summary_lines.append(line.strip())
+
+        if analyzable == "광고성":
+            return "광고", "광고", "광고성 기사로 분류되어 분석이 중단되었습니다.", "광고성"
+
         if summary_lines:
             summary = "\n".join(summary_lines)
-        return large_cat, small_cat, summary
+        return large_cat, small_cat, summary, analyzable
     except Exception:
-        return "탄소중립", "일반", "- 분석 엔진 연동 일시 오류"
+        return "탄소중립", "일반", "- 분석 엔진 연동 일시 오류", "가능"
 
 def generate_hwp_text_file(row_data):
     hwp_template = f"""[기획예산처 탄소중립정책과 - 행정 보도 요약 보고서]
@@ -421,8 +507,9 @@ def generate_weekly_trend_summary(data_list, openai_client):
     if openai_client is None:
         return "💡 OpenAI API Key가 제공되지 않아 빅데이터 동향 종합 브리핑을 도출할 수 없습니다."
     
+    policy_items = [d for d in data_list if d.get("분석가능여부", "가능") != "광고성"]
     context = ""
-    for idx, d in enumerate(data_list[:15]):
+    for idx, d in enumerate(policy_items[:15]):
         context += f"[{idx+1}] {d['기사제목']} -> {d['5줄요약']}\n"
         
     try:
@@ -437,6 +524,31 @@ def generate_weekly_trend_summary(data_list, openai_client):
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"동향 리포트 구성 중 기술적 지연 발생: {str(e)}"
+
+def format_summary_for_html(summary_text):
+    """개조식 요약의 줄바꿈을 HTML 표시용으로 변환"""
+    if not summary_text:
+        return "- 요약 없음"
+    return summary_text.replace("\n", "<br>")
+
+def render_focus_summary_card(item):
+    """관제 센터 하단 — 단일 기사 AI 요약 상세 카드"""
+    summary_html = format_summary_for_html(item.get("5줄요약", item.get("요약", "")))
+    st.markdown(f"""
+        <div class="focus-summary-card">
+            <span style="background:#0A2540; color:#FFFFFF; padding:3px 10px; border-radius:4px; font-size:0.78rem; font-weight:600;">
+                {item.get('대분류', '-')} / {item.get('소분류', '-')}
+            </span>
+            <div class="focus-summary-title">{item['기사제목']}</div>
+            <div class="focus-summary-meta">
+                📰 {item['언론사']} &nbsp;|&nbsp; 🔖 {item.get('수집키워드', '-')} &nbsp;|&nbsp; 🕐 {item.get('발행일시', '-')}
+            </div>
+            <div class="ai-summary-box">
+                <strong style="color:#0A2540;">📄 AI 개조식 요약 (3~5줄)</strong><br><br>
+                {summary_html}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 def render_article_detail_cards(items):
     """선택 안건 심층 분석 카드 렌더링"""
@@ -462,7 +574,10 @@ openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 # 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출
 if st.session_state.scraped_data:
-    df_spike = pd.DataFrame(st.session_state.scraped_data)
+    df_spike = pd.DataFrame([
+        x for x in st.session_state.scraped_data
+        if x.get("분석가능여부", "가능") != "광고성"
+    ])
     kw_counts = df_spike['수집키워드'].value_counts()
     for kw, count in kw_counts.items():
         if count >= 6:
@@ -512,14 +627,17 @@ if execute:
             if "데이터 추출 제한" in full_body:
                 full_body = item['description']
                 
-            large_cat, small_cat, summary_text = classify_and_summarize(item['title'], full_body, openai_client)
-            
+            large_cat, small_cat, summary_text, analyzable = classify_and_summarize(
+                item['title'], full_body, openai_client
+            )
+
             raw_filename = f"({large_cat})({small_cat}){item['title']}_{item['press']}"
             safe_hwp_name = clean_filename(raw_filename)
-            
+
             new_analyzed.append({
                 "대분류": large_cat,
                 "소분류": small_cat,
+                "분석가능여부": analyzable,
                 "기사제목": item['title'],
                 "언론사": item['press'],
                 "URL": item['link'],
@@ -532,11 +650,12 @@ if execute:
             })
             p_bar.progress((index + 1) / len(raw_news))
 
+        ad_count = sum(1 for x in new_analyzed if x.get("분석가능여부") == "광고성")
         st.session_state.all_history.extend(new_analyzed)
         refresh_scraped_data_from_history()
         status_bar.success(
             f"🏛️ 증분 수집 완료. 신규 {len(new_analyzed)}건 추가 "
-            f"(전체 히스토리 {len(st.session_state.all_history)}건, "
+            f"(광고성 제외 {ad_count}건, 전체 히스토리 {len(st.session_state.all_history)}건, "
             f"대시보드 48h {len(st.session_state.scraped_data)}건)."
         )
         st.rerun()
@@ -566,33 +685,96 @@ with tab_dashboard:
         # Section B: 종합 관제 센터 테두리 테이블
         st.write("---")
         st.markdown("### 📋 실시간 수집 보도자료 종합 관제 센터")
-        st.caption("최근 48시간 이내 발행 기사만 표시됩니다. 북마크 체크 시 라이브러리 탭에 자동 저장됩니다.")
-        
+        st.caption(
+            "최근 48시간 이내 발행 기사만 표시됩니다. "
+            "테이블에서 [선택] 체크 또는 하단 드롭다운으로 기사를 고르면 AI 요약 전문이 표시됩니다."
+        )
+
+        df_display["요약"] = df_display["5줄요약"].fillna("").astype(str)
         df_display.insert(0, "선택", False)
         df_display.insert(1, "북마크", df_display["URL"].apply(lambda u: u in library_urls))
-        
+
+        table_columns = [
+            "선택", "북마크", "기사제목", "언론사", "요약",
+            "대분류", "소분류", "발행일시", "수집키워드", "URL",
+        ]
+
         edited_df = st.data_editor(
-            df_display[["선택", "북마크", "대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]],
+            df_display[table_columns],
             hide_index=True,
             use_container_width=True,
-            disabled=["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"],
+            disabled=[
+                "기사제목", "언론사", "요약",
+                "대분류", "소분류", "발행일시", "수집키워드", "URL",
+            ],
             column_config={
-                "선택": st.column_config.CheckboxColumn("선택", default=False),
-                "북마크": st.column_config.CheckboxColumn("북마크", default=False),
+                "선택": st.column_config.CheckboxColumn("선택", default=False, width="small"),
+                "북마크": st.column_config.CheckboxColumn("북마크", default=False, width="small"),
+                "기사제목": st.column_config.TextColumn("기사제목", width="large"),
+                "언론사": st.column_config.TextColumn("언론사", width="small"),
+                "요약": st.column_config.TextColumn(
+                    "AI 요약",
+                    width="medium",
+                    help="셀에는 요약 미리보기가 표시됩니다. 전체 내용은 하단 [선택된 기사 상세 요약 카드]에서 확인하세요.",
+                ),
+                "대분류": st.column_config.TextColumn("대분류", width="small"),
+                "소분류": st.column_config.TextColumn("소분류", width="small"),
+                "발행일시": st.column_config.TextColumn("발행일시", width="small"),
+                "수집키워드": st.column_config.TextColumn("키워드", width="small"),
+                "URL": st.column_config.LinkColumn("원문", display_text="🔗 열기"),
             },
             key="dashboard_editor",
         )
 
         sync_library_from_bookmarks(st.session_state.scraped_data, edited_df)
-        
+
+        url_to_item = {item["URL"]: item for item in st.session_state.scraped_data}
         url_to_idx = {item["URL"]: idx for idx, item in enumerate(st.session_state.scraped_data)}
         selected_rows = [
             url_to_idx[row["URL"]]
             for _, row in edited_df.iterrows()
             if row["선택"] and row["URL"] in url_to_idx
         ]
-        
-        # Section C: 심층 요약 분석 피드
+
+        # Section B-2: 선택된 기사 상세 요약 카드 (테이블 ↔ 실시간 연동)
+        st.markdown("#### 📌 선택된 기사 상세 요약 카드")
+
+        article_labels = [
+            f"[{item['언론사']}] {item['기사제목'][:72]}{'…' if len(item['기사제목']) > 72 else ''}"
+            for item in st.session_state.scraped_data
+        ]
+        article_urls = [item["URL"] for item in st.session_state.scraped_data]
+
+        focus_col1, focus_col2 = st.columns([3, 1])
+        with focus_col2:
+            st.metric("관제 대상", f"{len(st.session_state.scraped_data)}건", help="48시간 이내 정책 분석 가능 기사")
+
+        if selected_rows:
+            focus_item = st.session_state.scraped_data[selected_rows[0]]
+            with focus_col1:
+                if len(selected_rows) == 1:
+                    st.caption("테이블 [선택] 체크와 연동된 기사의 AI 요약 전문입니다.")
+                else:
+                    st.caption(
+                        f"테이블에서 {len(selected_rows)}건 선택됨 — "
+                        "첫 번째 선택 기사 요약을 표시합니다. (복수 건은 하단 심층 분석 피드 참조)"
+                    )
+        else:
+            with focus_col1:
+                focus_label = st.selectbox(
+                    "기사 선택하여 요약 보기",
+                    options=article_labels,
+                    index=0,
+                    key="dashboard_focus_select",
+                )
+            focus_item = url_to_item[article_urls[article_labels.index(focus_label)]]
+
+        if focus_item:
+            render_focus_summary_card(focus_item)
+            with st.expander("🔗 원문 기사 열기", expanded=False):
+                st.markdown(f"[{focus_item['기사제목']}]({focus_item['URL']})")
+
+        # Section C: 심층 요약 분석 피드 (복수 선택)
         if selected_rows:
             st.markdown("### 🔍 선택 안건별 심층 AI 행정 분석 피드")
             selected_items = [st.session_state.scraped_data[idx] for idx in selected_rows]
@@ -635,7 +817,7 @@ with tab_history:
 
     if st.session_state.all_history:
         df_history = pd.DataFrame(st.session_state.all_history)
-        display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
+        display_cols = ["대분류", "소분류", "분석가능여부", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
         available_cols = [c for c in display_cols if c in df_history.columns]
         st.dataframe(
             df_history[available_cols],
