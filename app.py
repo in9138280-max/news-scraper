@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from bs4 import BeautifulSoup
 from openai import OpenAI
+import hashlib  # [추가] 3대 키 조합을 안전하게 고유 ID(해시)로 변환하기 위함
 
 # [Premium UI 가이드] 페이지 레이아웃 및 다크/라이트 하이브리드 인텔리전스 테마 세팅
 st.set_page_config(
@@ -18,7 +19,16 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 🎨 PREMIUM BI DASHBOARD BRANDING CSS (돈 쓴 것 같은 UI)
+# 📌 [새로 추가] 서버 전역 공동 계정 저장 공간 인프라
+# ----------------------------------------------------
+if "global_agent_db" not in st.cache_resource:
+    # 구조: { "인증키들_해시조합": [...] } 형태의 실시간 공유용 라이브러리 저장소
+    st.cache_resource.global_agent_db = {}
+
+global_db = st.cache_resource.global_agent_db
+
+# ----------------------------------------------------
+# 💎 PREMIUM BI DASHBOARD BRANDING CSS (돈 쓴 것 같은 UI)
 # ----------------------------------------------------
 st.markdown("""
     <style>
@@ -111,7 +121,7 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.02);
     }
     
-    /* 9-1. 관제 센터 — 선택 기사 상세 요약 카드 */
+    /* 9-1. 관제 센터 선택 기사 상세 요약 카드 */
     .focus-summary-card {
         background: #FFFFFF;
         padding: 1.4rem 1.8rem;
@@ -149,22 +159,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 🏛️ 상단 레이아웃 - 로고 & 타이틀 완전 고정형 아키텍처
+# 상단 레이아웃 - 로고 & 타이틀 완전 고정형 아키텍처
 # ----------------------------------------------------
-# 사이드바 최상단 로고 배치
 if os.path.exists("logo.png"):
     st.logo("logo.png")
 
-# 메인 브랜딩 헤더 카드 구동
 st.markdown('<div class="premium-header-card">', unsafe_allow_html=True)
 header_logo_col, header_text_col = st.columns([1, 4.2])
 
 with header_logo_col:
     if os.path.exists("logo.png"):
-        # 왜곡이나 마진 말림 현상을 원천 배제한 크기 고정 배치
         st.image("logo.png", width=210)
     else:
-        st.markdown("<h2 style='margin:0; color:#0A2540; letter-spacing:-0.1rem;'>🏛️ 기획예산처</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='margin:0; color:#0A2540; letter-spacing:-0.1rem;'>기획예산처</h2>", unsafe_allow_html=True)
 
 with header_text_col:
     st.markdown("""
@@ -174,7 +181,7 @@ with header_text_col:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# CORE 시스템 인프라 및 세션 관리
+# CORE 시스템 인프라 및 세션 관리 [수정]
 # ----------------------------------------------------
 if "scraped_data" not in st.session_state:
     st.session_state.scraped_data = []
@@ -183,16 +190,38 @@ if "all_history" not in st.session_state:
 if "library" not in st.session_state:
     st.session_state.library = []
 
-# 사이드바 자격 인증 및 다량 키워드 설정
-st.sidebar.markdown("### 🔒 전산 자격 인증")
+# [리팩토링] 사이드바 자격 인증 및 다량 키워드 설정
+st.sidebar.markdown("### 🔐 전산 자격 공동 인증")
+st.sidebar.caption("동일한 3가지 자격 인증키를 기입한 사용자들은 하나의 계정으로 묶여 북마크 라이브러리가 영구 누적 및 동기화됩니다.")
+
 naver_client_id = st.sidebar.text_input("네이버 Client ID", value=st.secrets.get("NAVER_CLIENT_ID", ""), type="password")
 naver_client_secret = st.sidebar.text_input("네이버 Client Secret", value=st.secrets.get("NAVER_CLIENT_SECRET", ""), type="password")
 openai_api_key = st.sidebar.text_input("OpenAI API Key", value=st.secrets.get("OPENAI_API_KEY", ""), type="password")
 
-st.sidebar.write("---")
-st.sidebar.markdown("### 🎯 범정부 모니터링 키워드")
+# 자격 인증 검증 처리 단 구동
+is_authenticated = False
+room_key = None
 
-# 복구 완료된 25개 전체 정책 핵심 키워드 풀
+if naver_client_id and naver_client_secret and openai_api_key:
+    # 3가지 키의 조합 문자열을 해싱하여 해당 그룹만의 고유 고정 룸(Room) ID 매칭
+    combined_credentials = f"{naver_client_id}_{naver_client_secret}_{openai_api_key}"
+    room_key = hashlib.md5(combined_credentials.encode()).hexdigest()
+    
+    # 서버 전역 데이터베이스에 해당 룸 전용 공유 라이브러리가 없으면 최초 생성
+    if room_key not in global_db:
+        global_db[room_key] = []
+        
+    # 사용자의 라이브러리 세션을 전역 공유 라이브러리로 주소 동기화 연동
+    st.session_state.library = global_db[room_key]
+    is_authenticated = True
+    st.sidebar.success(f"🟢 동기화 완료 (그룹 ID: {room_key[:8]})")
+else:
+    st.sidebar.info("서비스 가동을 위해 3가지 전산 인증키를 모두 기입해 주세요.")
+    st.session_state.library = []
+
+st.sidebar.write("---")
+st.sidebar.markdown("### 🔍 범정부 모니터링 키워드")
+
 extended_keywords = [
     "탈탄소", "탄소중립", "넷제로", "ghg", "온실가스", "탄소배출", "배출권", 
     "배출권거래제", "탄소배출권", "ETS", "탄소세", "탄소시장", "IAA", 
@@ -202,13 +231,13 @@ extended_keywords = [
 ]
 
 target_keywords = st.sidebar.multiselect(
-    "조사 대상 정책 키워드", 
+    "조사 대상 정책 핵심 키워드", 
     options=extended_keywords, 
     default=["탄소중립", "탄소배출권", "배출권거래제", "CBAM", "ESG"]
 )
 
 # ----------------------------------------------------
-# 날짜 파싱 및 48시간 필터 유틸리티
+# 날짜 파싱 및 48시간 필터 유틸리티 (기존 함수 유지)
 # ----------------------------------------------------
 HOURS_48 = timedelta(hours=48)
 
@@ -220,7 +249,6 @@ def to_naive_local(dt):
     return dt
 
 def parse_article_date(date_str):
-    """다양한 형식의 기사 발행일 문자열을 datetime으로 변환"""
     if not date_str:
         return None
     date_str = date_str.strip()
@@ -263,7 +291,6 @@ def parse_article_date(date_str):
     return None
 
 def is_within_48_hours(dt):
-    """현재 시각 기준 48시간 이내 발행 여부"""
     dt = to_naive_local(dt)
     if dt is None:
         return False
@@ -275,7 +302,6 @@ def format_pub_date(dt):
     return to_naive_local(dt).strftime("%Y-%m-%d %H:%M")
 
 def sync_library_from_bookmarks(data_list, edited_df):
-    """대시보드 북마크 체크 상태를 session_state.library에 동기화"""
     library_urls = {item["URL"] for item in st.session_state.library}
     data_by_url = {item["URL"]: item for item in data_list}
 
@@ -289,8 +315,11 @@ def sync_library_from_bookmarks(data_list, edited_df):
             st.session_state.library = [x for x in st.session_state.library if x["URL"] != url]
             library_urls.discard(url)
 
+    # 전역 서버 저장소 동기화 무결성 보장
+    if room_key:
+        global_db[room_key] = st.session_state.library
+
 def refresh_scraped_data_from_history():
-    """all_history 중 48시간 이내·정책 분석 가능 기사만 scraped_data(대시보드)에 반영"""
     st.session_state.scraped_data = [
         item for item in st.session_state.all_history
         if is_within_48_hours(parse_article_date(item.get("발행일시", "")))
@@ -303,7 +332,6 @@ def clean_filename(filename):
         cleaned += ".hwp"
     return cleaned
 
-# 타임아웃을 완전 방어하는 고성능 실시간 다량 수집 엔진
 def fetch_mass_news_stable(keywords, client_id, client_secret, existing_urls=None):
     scraped_items = []
     existing_urls = existing_urls or set()
@@ -343,7 +371,6 @@ def fetch_mass_news_stable(keywords, client_id, client_secret, existing_urls=Non
             except Exception:
                 pass
         
-        # 백업 서브 크롤링 파트
         try:
             for page in range(3):
                 start_num = (page * 10) + 1
@@ -418,18 +445,10 @@ CLASSIFY_SYSTEM_PROMPT = """
 만약 '분석가능여부'가 '광고성'일 경우, 요약 내용 대신 "광고성 기사로 분류되어 분석이 중단되었습니다."라고 출력해줘.
 """
 
-AD_TITLE_KEYWORDS = [
-    "할인", "이벤트", "가입", "신청", "출시", "론칭", "런칭", "프로모션",
-    "쿠폰", "무료체험", "한정판매", "사전예약", "투자유치", "IPO",
-    "펀드 가입", "대출", "보험 가입", "카드 혜택",
-]
-AD_BODY_KEYWORDS = [
-    "지금 가입", "한정 혜택", "이벤트 참여", "보도자료", "PRNewswire",
-    "제휴 카드", "수수료 면제", "투자 권유", "광고", "협찬",
-]
+AD_TITLE_KEYWORDS = ["할인", "이벤트", "가입", "신청", "출시", "론칭", "런칭", "프로모션", "쿠폰", "무료체험", "한정판매", "사전예약", "투자유치", "IPO", "펀드 가입", "대출", "보험 가입", "카드 혜택"]
+AD_BODY_KEYWORDS = ["지금 가입", "한정 혜택", "이벤트 참여", "보도자료", "PRNewswire", "제휴 카드", "수수료 면제", "투자 권유", "광고", "협찬"]
 
 def is_likely_ad_article(title, content=""):
-    """API 호출 전 규칙 기반 1차 광고성 필터 (비용·노이즈 절감)"""
     text = f"{title} {content}".lower()
     title_lower = title.lower()
     if any(kw in title_lower for kw in AD_TITLE_KEYWORDS):
@@ -505,7 +524,7 @@ def generate_hwp_text_file(row_data):
 
 def generate_weekly_trend_summary(data_list, openai_client):
     if openai_client is None:
-        return "💡 OpenAI API Key가 제공되지 않아 빅데이터 동향 종합 브리핑을 도출할 수 없습니다."
+        return "⚠️ OpenAI API Key가 제공되지 않아 빅데이터 동향 종합 브리핑을 도출할 수 없습니다."
     
     policy_items = [d for d in data_list if d.get("분석가능여부", "가능") != "광고성"]
     context = ""
@@ -516,7 +535,7 @@ def generate_weekly_trend_summary(data_list, openai_client):
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "너는 기획예산처의 경제동향 수석 심의관이야. 뉴스 요약 세트를 분석하여 [1. 종합 정책 평가], [2. 주요 리스크 관리 안건], [3. 부처별 예산·정책 대응 제언] 동향 보고서를 개조식(◼︎, ❍, - 기호 사용)으로 엄격하게 작성해줘."},
+                {"role": "system", "content": "너는 기획예산처의 경제동향 수석 심의관이야. 뉴스 요약 세트를 분석하여 [1. 종합 정책 평가], [2. 주요 리스크 관리 안건], [3. 부처별 예산·정책 대응 제언] 동향 보고서를 개조식(■, ▶, - 기호 사용)으로 엄격하게 작성해줘."},
                 {"role": "user", "content": f"수집된 빅데이터 동향 정보셋:\n{context}"}
             ],
             temperature=0.3
@@ -526,13 +545,11 @@ def generate_weekly_trend_summary(data_list, openai_client):
         return f"동향 리포트 구성 중 기술적 지연 발생: {str(e)}"
 
 def format_summary_for_html(summary_text):
-    """개조식 요약의 줄바꿈을 HTML 표시용으로 변환"""
     if not summary_text:
         return "- 요약 없음"
     return summary_text.replace("\n", "<br>")
 
 def render_focus_summary_card(item):
-    """관제 센터 하단 — 단일 기사 AI 요약 상세 카드"""
     summary_html = format_summary_for_html(item.get("5줄요약", item.get("요약", "")))
     st.markdown(f"""
         <div class="focus-summary-card">
@@ -541,17 +558,16 @@ def render_focus_summary_card(item):
             </span>
             <div class="focus-summary-title">{item['기사제목']}</div>
             <div class="focus-summary-meta">
-                📰 {item['언론사']} &nbsp;|&nbsp; 🔖 {item.get('수집키워드', '-')} &nbsp;|&nbsp; 🕐 {item.get('발행일시', '-')}
+                📢 {item['언론사']} &nbsp;|&nbsp; 🔍 {item.get('수집키워드', '-')} &nbsp;|&nbsp; 📅 {item.get('발행일시', '-')}
             </div>
             <div class="ai-summary-box">
-                <strong style="color:#0A2540;">📄 AI 개조식 요약 (3~5줄)</strong><br><br>
+                <strong style="color:#0A2540;">💡 AI 개조식 요약 (3~5줄)</strong><br><br>
                 {summary_html}
             </div>
         </div>
     """, unsafe_allow_html=True)
 
 def render_article_detail_cards(items):
-    """선택 안건 심층 분석 카드 렌더링"""
     for target_item in items:
         st.markdown(f"""
             <div class="dashboard-card">
@@ -561,305 +577,327 @@ def render_article_detail_cards(items):
                 <h4 style="margin: 0.8rem 0 0.3rem 0; font-size:1.3rem;">{target_item['기사제목']}</h4>
                 <p style="color:#64748B; font-size:0.85rem; margin-bottom:1rem;">출처 본청: {target_item['언론사']} | 인덱싱 키워드: {target_item['수집키워드']} | 발행: {target_item.get('발행일시', '-')}</p>
                 <div class="ai-summary-box">
-                    <strong>📄 AI 에이전트 요약 개조식 보고 서식</strong><br>
+                    <strong>💡 AI 에이전트 요약 개조식 보고 서식</strong><br>
                     {target_item['5줄요약']}
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 메인 비즈니스 로직 제어부
+# 📌 메인 비즈니스 로직 제어부 [수정 및 울타리 보호 설치]
 # ----------------------------------------------------
-openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+if is_authenticated:
+    # 3대 핵심 키가 모두 들어와 자격 승인이 완료되었을 때만 시스템 메인 로직 가동
+    openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
-# 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출
-if st.session_state.scraped_data:
-    df_spike = pd.DataFrame([
-        x for x in st.session_state.scraped_data
-        if x.get("분석가능여부", "가능") != "광고성"
+    # 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출
+    if st.session_state.scraped_data:
+        df_spike = pd.DataFrame([
+            x for x in st.session_state.scraped_data
+            if x.get("분석가능여부", "가능") != "광고성"
+        ])
+        if not df_spike.empty:
+            kw_counts = df_spike['수집키워드'].value_counts()
+            for kw, count in kw_counts.items():
+                if count >= 6:
+                    st.markdown(f"""
+                        <div class="premium-spike-alert">
+                            <span style="font-size:1.15rem; font-weight:700;">🚨 [동향 경보] 주요 정책 안건 이슈 스파이크 발생</span><br>
+                            현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
+                        </div>
+                    """, unsafe_allow_html=True)
+
+    # 행정 명령 컨트롤 타워 버튼 배치
+    col_btn1, col_btn2 = st.columns([4.2, 1])
+    with col_btn1:
+        execute = st.button("📡 범정부 지정 정책 키워드 기반 빅데이터 동향 수집 및 에이전트 분석 가동", use_container_width=True)
+    with col_btn2:
+        if st.button("🗑️ 전산 데이터 초기화", use_container_width=True):
+            st.session_state.scraped_data = []
+            st.session_state.all_history = []
+            if room_key:
+                global_db[room_key] = []  # 인증된 공유 라이브러리도 함께 공장초기화
+            st.session_state.library = []
+            st.rerun()
+
+    if execute:
+        status_bar = st.empty()
+        status_bar.info("🔄 고성능 포털 동적 수집 엔진을 가동합니다. 최근 48시간 이내 미디어 인덱스를 동기화 중입니다...")
+        
+        existing_urls = {item["URL"] for item in st.session_state.all_history}
+        raw_news = fetch_mass_news_stable(target_keywords, naver_client_id, naver_client_secret, existing_urls=existing_urls)
+        
+        if not raw_news:
+            if existing_urls:
+                refresh_scraped_data_from_history()
+                status_bar.warning("⚠️ 신규 기사가 없습니다. 기존 히스토리에서 48시간 이내 데이터를 유지합니다.")
+            else:
+                status_bar.error("📡 데이터 연동 실패. 네트워크 응답 처리를 다시 점검하십시오.")
+        else:
+            skipped_count = len(existing_urls)
+            status_bar.info(
+                f"📰 최근 48시간 이내 신규 {len(raw_news)}건 식별 "
+                f"(히스토리 중복 {skipped_count}건 제외). AI 행정 요약 모델 구동 중..."
+            )
+            
+            new_analyzed = []
+            p_bar = st.progress(0)
+            
+            for index, item in enumerate(raw_news):
+                full_body = crawl_article_body_stable(item['link'])
+                if "데이터 추출 제한" in full_body:
+                    full_body = item['description']
+                    
+                large_cat, small_cat, summary_text, analyzable = classify_and_summarize(
+                    item['title'], full_body, openai_client
+                )
+
+                raw_filename = f"({large_cat})({small_cat}){item['title']}_{item['press']}"
+                safe_hwp_name = clean_filename(raw_filename)
+
+                new_analyzed.append({
+                    "대분류": large_cat,
+                    "소분류": small_cat,
+                    "분석가능여부": analyzable,
+                    "기사제목": item['title'],
+                    "언론사": item['press'],
+                    "URL": item['link'],
+                    "본문": full_body,
+                    "파일명": safe_hwp_name,
+                    "5줄요약": summary_text,
+                    "수집키워드": item['keyword'],
+                    "발행일시": item.get('pub_date', ''),
+                    "수집일시": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                })
+                p_bar.progress((index + 1) / len(raw_news))
+
+            ad_count = sum(1 for x in new_analyzed if x.get("분석가능여부") == "광고성")
+            st.session_state.all_history.extend(new_analyzed)
+            refresh_scraped_data_from_history()
+            status_bar.success(
+                f"📢 증분 수집 완료. 신규 {len(new_analyzed)}건 추가 "
+                f"(광고성 제외 {ad_count}건, 전체 히스토리 {len(st.session_state.all_history)}건, "
+                f"대시보드 48h {len(st.session_state.scraped_data)}건)."
+            )
+            st.rerun()
+
+    # ----------------------------------------------------
+    # 📊 출력단 - 탭 기반 BI 대시보드 레이아웃
+    # ----------------------------------------------------
+    tab_dashboard, tab_history, tab_library = st.tabs([
+        "📊 대시보드",
+        "📂 전체 히스토리",
+        "📥 라이브러리 (북마크)",
     ])
-    kw_counts = df_spike['수집키워드'].value_counts()
-    for kw, count in kw_counts.items():
-        if count >= 6:
-            st.markdown(f"""
-                <div class="premium-spike-alert">
-                    <span style="font-size:1.15rem; font-weight:700;">🚨 [동향 경보] 주요 정책 안건 이슈 스파이크 발생</span><br>
-                    현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
+
+    # ── Tab 1: 대시보드 ──
+    with tab_dashboard:
+        if st.session_state.scraped_data:
+            df_display = pd.DataFrame(st.session_state.scraped_data)
+            library_urls = {item["URL"] for item in st.session_state.library}
+
+            # Section A: 종합 브리핑 영역
+            st.write("---")
+            st.markdown("### 📝 빅데이터 기반 탄소중립 정책동향 종합 브리핑")
+            with st.expander("📊 금주 탄소중립 정책동향 분석 리포트 확인", expanded=True):
+                trend_report = generate_weekly_trend_summary(st.session_state.scraped_data, openai_client)
+                st.markdown(f"<div class='ai-summary-box'>{trend_report}</div>", unsafe_allow_html=True)
+                
+            # Section B: 종합 관제 센터 테두리 테이블
+            st.write("---")
+            st.markdown("### 📡 실시간 수집 보도자료 종합 관제 센터")
+            st.caption(
+                "최근 48시간 이내 발행 기사만 표시됩니다. "
+                "테이블에서 [선택] 체크 또는 하단 드롭다운으로 기사를 고르면 AI 요약 전문이 표시됩니다."
+            )
+
+            df_display["요약"] = df_display["5줄요약"].fillna("").astype(str)
+            df_display.insert(0, "선택", False)
+            df_display.insert(1, "북마크", df_display["URL"].apply(lambda u: u in library_urls))
+
+            table_columns = [
+                "선택", "북마크", "기사제목", "언론사", "요약",
+                "대분류", "소분류", "발행일시", "수집키워드", "URL",
+            ]
+
+            edited_df = st.data_editor(
+                df_display[table_columns],
+                hide_index=True,
+                use_container_width=True,
+                disabled=[
+                    "기사제목", "언론사", "요약",
+                    "대분류", "소분류", "발행일시", "수집키워드", "URL",
+                ],
+                column_config={
+                    "선택": st.column_config.CheckboxColumn("선택", default=False, width="small"),
+                    "북마크": st.column_config.CheckboxColumn("북마크", default=False, width="small"),
+                    "기사제목": st.column_config.TextColumn("기사제목", width="large"),
+                    "언론사": st.column_config.TextColumn("언론사", width="small"),
+                    "요약": st.column_config.TextColumn(
+                        "AI 요약",
+                        width="medium",
+                        help="셀에는 요약 미리보기가 표시됩니다. 전체 내용은 하단 [선택된 기사 상세 요약 카드]에서 확인하세요.",
+                    ),
+                    "대분류": st.column_config.TextColumn("대분류", width="small"),
+                    "소분류": st.column_config.TextColumn("소분류", width="small"),
+                    "발행일시": st.column_config.TextColumn("발행일시", width="small"),
+                    "수집키워드": st.column_config.TextColumn("키워드", width="small"),
+                    "URL": st.column_config.LinkColumn("원문", display_text="🔗 열기"),
+                },
+                key="dashboard_editor",
+            )
+
+            sync_library_from_bookmarks(st.session_state.scraped_data, edited_df)
+
+            url_to_item = {item["URL"]: item for item in st.session_state.scraped_data}
+            url_to_idx = {item["URL"]: idx for idx, item in enumerate(st.session_state.scraped_data)}
+            selected_rows = [
+                url_to_idx[row["URL"]]
+                for _, row in edited_df.iterrows()
+                if row["선택"] and row["URL"] in url_to_idx
+            ]
+
+            # Section B-2: 선택된 기사 상세 요약 카드 (테이블 ↔ 실시간 연동)
+            st.markdown("#### 📑 선택된 기사 상세 요약 카드")
+
+            article_labels = [
+                f"[{item['언론사']}] {item['기사제목'][:72]}{'…' if len(item['기사제목']) > 72 else ''}"
+                for item in st.session_state.scraped_data
+            ]
+            article_urls = [item["URL"] for item in st.session_state.scraped_data]
+
+            focus_col1, focus_col2 = st.columns([3, 1])
+            with focus_col2:
+                st.metric("관제 대상", f"{len(st.session_state.scraped_data)}건", help="48시간 이내 정책 분석 가능 기사")
+
+            if selected_rows:
+                focus_item = st.session_state.scraped_data[selected_rows[0]]
+                with focus_col1:
+                    if len(selected_rows) == 1:
+                        st.caption("테이블 [선택] 체크와 연동된 기사의 AI 요약 전문입니다.")
+                    else:
+                        st.caption(
+                            f"테이블에서 {len(selected_rows)}건 선택됨 👀 "
+                            "첫 번째 선택 기사 요약을 표시합니다. (복수 건은 하단 심층 분석 피드 참조)"
+                        )
+            else:
+                with focus_col1:
+                    focus_label = st.selectbox(
+                        "기사 선택하여 요약 보기",
+                        options=article_labels,
+                        index=0,
+                        key="dashboard_focus_select",
+                    )
+                focus_item = url_to_item[article_urls[article_labels.index(focus_label)]]
+
+            if focus_item:
+                render_focus_summary_card(focus_item)
+                with st.expander("🔗 원문 기사 열기", expanded=False):
+                    st.markdown(f"[{focus_item['기사제목']}]({focus_item['URL']})")
+
+            # Section C: 심층 요약 분석 피드 (복수 선택)
+            if selected_rows:
+                st.markdown("### 🔎 선택 안건별 심층 AI 행정 분석 피드")
+                selected_items = [st.session_state.scraped_data[idx] for idx in selected_rows]
+                render_article_detail_cards(selected_items)
+                    
+                # Section D: 공문서 출력 다운로더
+                st.write("---")
+                st.markdown("### 🖨️ 정부 표준 결재용 한글(HWP) 문서 출력 컨트롤러")
+                col_hwp1, col_hwp2 = st.columns([1, 1])
+                
+                with col_hwp1:
+                    zip_hwp_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_hwp_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for idx in selected_rows:
+                            item_data = st.session_data = st.session_state.scraped_data[idx]
+                            hwp_file_stream = generate_hwp_text_file(item_data)
+                            zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
+                    
+                    st.download_button(
+                        label="🖨️ 선택 안건 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
+                        data=zip_hwp_buffer.getvalue(),
+                        file_name=f"기획예산처_탄소중립_선택보고서_{datetime.now().strftime('%Y%m%d')}.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+                with col_hwp2:
+                    st.markdown("<p style='color:#64748B; font-size:0.9rem; padding-top:8px;'>💡 상단 관제 센터 테이블에서 체크박스를 터치하면 결재용 파일셋 빌더에 즉각 자동 누적 반영됩니다.</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+                <div style="text-align:center; padding:5rem; color:#94A3B8;">
+                    <p style="font-size:1.2rem;">📡 플랫폼 데이터 초기화 상태입니다.</p>
+                    <p style="font-size:0.9rem;">상단의 [빅데이터 동향 수집 및 에이전트 분석 가동] 버튼을 클릭하시면 실시간 인텔리전스 체계가 수립됩니다.</p>
                 </div>
             """, unsafe_allow_html=True)
 
-# 행정 명령 컨트롤 타워 버튼 배치
-col_btn1, col_btn2 = st.columns([4.2, 1])
-with col_btn1:
-    execute = st.button("🏛️ 범정부 지정 정책 키워드 기반 빅데이터 동향 수집 및 에이전트 분석 가동", use_container_width=True)
-with col_btn2:
-    if st.button("🧹 전산 데이터 초기화", use_container_width=True):
-        st.session_state.scraped_data = []
-        st.session_state.all_history = []
-        st.session_state.library = []
-        st.rerun()
+    # ── Tab 2: 전체 히스토리 ──
+    with tab_history:
+        st.markdown("### 📂 세션 전체 수집 히스토리")
+        st.caption(f"세션 동안 누적 수집된 전체 기사 {len(st.session_state.all_history)}건")
 
-if execute:
-    status_bar = st.empty()
-    status_bar.info("⏳ 고성능 포털 동적 수집 엔진을 가동합니다. 최근 48시간 이내 미디어 인덱스를 동기화 중입니다...")
-    
-    existing_urls = {item["URL"] for item in st.session_state.all_history}
-    raw_news = fetch_mass_news_stable(target_keywords, naver_client_id, naver_client_secret, existing_urls=existing_urls)
-    
-    if not raw_news:
-        if existing_urls:
-            refresh_scraped_data_from_history()
-            status_bar.warning("ℹ️ 신규 기사가 없습니다. 기존 히스토리에서 48시간 이내 데이터를 유지합니다.")
+        if st.session_state.all_history:
+            df_history = pd.DataFrame(st.session_state.all_history)
+            display_cols = ["대분류", "소분류", "분석가능여부", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
+            available_cols = [c for c in display_cols if c in df_history.columns]
+            st.dataframe(
+                df_history[available_cols],
+                hide_index=True,
+                use_container_width=True,
+            )
         else:
-            status_bar.error("❌ 데이터 연동 실패. 네트워크 응답 처리를 다시 점검하십시오.")
-    else:
-        skipped_count = len(existing_urls)
-        status_bar.info(
-            f"🔎 최근 48시간 이내 신규 {len(raw_news)}건 식별 "
-            f"(히스토리 중복 {skipped_count}건 제외). AI 행정 요약 모델 구동 중..."
-        )
+            st.info("아직 수집된 히스토리가 없습니다. 상단 수집 버튼을 실행해 주세요.")
+
+    # ── Tab 3: 라이브러리 (북마크) [수정결합 파트] ──
+    with tab_library:
+        st.markdown("### 📥 라이브러리 · 북마크 저장 기사")
+        st.caption(f"공동 그룹 인증 계정에 실시간 누적 저장된 항목수: {len(st.session_state.library)}건")
         
-        new_analyzed = []
-        p_bar = st.progress(0)
-        
-        for index, item in enumerate(raw_news):
-            full_body = crawl_article_body_stable(item['link'])
-            if "데이터 추출 제한" in full_body:
-                full_body = item['description']
-                
-            large_cat, small_cat, summary_text, analyzable = classify_and_summarize(
-                item['title'], full_body, openai_client
+        # ----------------------------------------------------
+        # 📌 [두 번째 주신 소스코드 본문 결합]
+        # ----------------------------------------------------
+        if st.session_state.library:
+            df_library = pd.DataFrame(st.session_state.library)
+            display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]
+            available_cols = [c for c in display_cols if c in df_library.columns]
+            st.dataframe(
+                df_library[available_cols],
+                hide_index=True,
+                use_container_width=True,
             )
 
-            raw_filename = f"({large_cat})({small_cat}){item['title']}_{item['press']}"
-            safe_hwp_name = clean_filename(raw_filename)
-
-            new_analyzed.append({
-                "대분류": large_cat,
-                "소분류": small_cat,
-                "분석가능여부": analyzable,
-                "기사제목": item['title'],
-                "언론사": item['press'],
-                "URL": item['link'],
-                "본문": full_body,
-                "파일명": safe_hwp_name,
-                "5줄요약": summary_text,
-                "수집키워드": item['keyword'],
-                "발행일시": item.get('pub_date', ''),
-                "수집일시": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            })
-            p_bar.progress((index + 1) / len(raw_news))
-
-        ad_count = sum(1 for x in new_analyzed if x.get("분석가능여부") == "광고성")
-        st.session_state.all_history.extend(new_analyzed)
-        refresh_scraped_data_from_history()
-        status_bar.success(
-            f"🏛️ 증분 수집 완료. 신규 {len(new_analyzed)}건 추가 "
-            f"(광고성 제외 {ad_count}건, 전체 히스토리 {len(st.session_state.all_history)}건, "
-            f"대시보드 48h {len(st.session_state.scraped_data)}건)."
-        )
-        st.rerun()
-
-# ----------------------------------------------------
-# 📊 출력단 - 탭 기반 BI 대시보드 레이아웃
-# ----------------------------------------------------
-tab_dashboard, tab_history, tab_library = st.tabs([
-    "📊 대시보드",
-    "📚 전체 히스토리",
-    "🔖 라이브러리 (북마크)",
-])
-
-# ── Tab 1: 대시보드 ──
-with tab_dashboard:
-    if st.session_state.scraped_data:
-        df_display = pd.DataFrame(st.session_state.scraped_data)
-        library_urls = {item["URL"] for item in st.session_state.library}
-
-        # Section A: 종합 브리핑 영역
-        st.write("---")
-        st.markdown("### 📊 빅데이터 기반 탄소중립 정책동향 종합 브리핑")
-        with st.expander("📝 금주 탄소중립 정책동향 분석 리포트 확인", expanded=True):
-            trend_report = generate_weekly_trend_summary(st.session_state.scraped_data, openai_client)
-            st.markdown(f"<div class='ai-summary-box'>{trend_report}</div>", unsafe_allow_html=True)
-            
-        # Section B: 종합 관제 센터 테두리 테이블
-        st.write("---")
-        st.markdown("### 📋 실시간 수집 보도자료 종합 관제 센터")
-        st.caption(
-            "최근 48시간 이내 발행 기사만 표시됩니다. "
-            "테이블에서 [선택] 체크 또는 하단 드롭다운으로 기사를 고르면 AI 요약 전문이 표시됩니다."
-        )
-
-        df_display["요약"] = df_display["5줄요약"].fillna("").astype(str)
-        df_display.insert(0, "선택", False)
-        df_display.insert(1, "북마크", df_display["URL"].apply(lambda u: u in library_urls))
-
-        table_columns = [
-            "선택", "북마크", "기사제목", "언론사", "요약",
-            "대분류", "소분류", "발행일시", "수집키워드", "URL",
-        ]
-
-        edited_df = st.data_editor(
-            df_display[table_columns],
-            hide_index=True,
-            use_container_width=True,
-            disabled=[
-                "기사제목", "언론사", "요약",
-                "대분류", "소분류", "발행일시", "수집키워드", "URL",
-            ],
-            column_config={
-                "선택": st.column_config.CheckboxColumn("선택", default=False, width="small"),
-                "북마크": st.column_config.CheckboxColumn("북마크", default=False, width="small"),
-                "기사제목": st.column_config.TextColumn("기사제목", width="large"),
-                "언론사": st.column_config.TextColumn("언론사", width="small"),
-                "요약": st.column_config.TextColumn(
-                    "AI 요약",
-                    width="medium",
-                    help="셀에는 요약 미리보기가 표시됩니다. 전체 내용은 하단 [선택된 기사 상세 요약 카드]에서 확인하세요.",
-                ),
-                "대분류": st.column_config.TextColumn("대분류", width="small"),
-                "소분류": st.column_config.TextColumn("소분류", width="small"),
-                "발행일시": st.column_config.TextColumn("발행일시", width="small"),
-                "수집키워드": st.column_config.TextColumn("키워드", width="small"),
-                "URL": st.column_config.LinkColumn("원문", display_text="🔗 열기"),
-            },
-            key="dashboard_editor",
-        )
-
-        sync_library_from_bookmarks(st.session_state.scraped_data, edited_df)
-
-        url_to_item = {item["URL"]: item for item in st.session_state.scraped_data}
-        url_to_idx = {item["URL"]: idx for idx, item in enumerate(st.session_state.scraped_data)}
-        selected_rows = [
-            url_to_idx[row["URL"]]
-            for _, row in edited_df.iterrows()
-            if row["선택"] and row["URL"] in url_to_idx
-        ]
-
-        # Section B-2: 선택된 기사 상세 요약 카드 (테이블 ↔ 실시간 연동)
-        st.markdown("#### 📌 선택된 기사 상세 요약 카드")
-
-        article_labels = [
-            f"[{item['언론사']}] {item['기사제목'][:72]}{'…' if len(item['기사제목']) > 72 else ''}"
-            for item in st.session_state.scraped_data
-        ]
-        article_urls = [item["URL"] for item in st.session_state.scraped_data]
-
-        focus_col1, focus_col2 = st.columns([3, 1])
-        with focus_col2:
-            st.metric("관제 대상", f"{len(st.session_state.scraped_data)}건", help="48시간 이내 정책 분석 가능 기사")
-
-        if selected_rows:
-            focus_item = st.session_state.scraped_data[selected_rows[0]]
-            with focus_col1:
-                if len(selected_rows) == 1:
-                    st.caption("테이블 [선택] 체크와 연동된 기사의 AI 요약 전문입니다.")
-                else:
-                    st.caption(
-                        f"테이블에서 {len(selected_rows)}건 선택됨 — "
-                        "첫 번째 선택 기사 요약을 표시합니다. (복수 건은 하단 심층 분석 피드 참조)"
-                    )
-        else:
-            with focus_col1:
-                focus_label = st.selectbox(
-                    "기사 선택하여 요약 보기",
-                    options=article_labels,
-                    index=0,
-                    key="dashboard_focus_select",
-                )
-            focus_item = url_to_item[article_urls[article_labels.index(focus_label)]]
-
-        if focus_item:
-            render_focus_summary_card(focus_item)
-            with st.expander("🔗 원문 기사 열기", expanded=False):
-                st.markdown(f"[{focus_item['기사제목']}]({focus_item['URL']})")
-
-        # Section C: 심층 요약 분석 피드 (복수 선택)
-        if selected_rows:
-            st.markdown("### 🔍 선택 안건별 심층 AI 행정 분석 피드")
-            selected_items = [st.session_state.scraped_data[idx] for idx in selected_rows]
-            render_article_detail_cards(selected_items)
-                
-            # Section D: 공문서 출력 다운로더
             st.write("---")
-            st.markdown("### 🖨️ 정부 표준 결재용 한글(HWP) 문서 출력 컨트롤러")
-            col_hwp1, col_hwp2 = st.columns([1, 1])
-            
-            with col_hwp1:
-                zip_hwp_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_hwp_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                    for idx in selected_rows:
-                        item_data = st.session_state.scraped_data[idx]
-                        hwp_file_stream = generate_hwp_text_file(item_data)
-                        zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
-                
-                st.download_button(
-                    label="📥 선택 안건 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
-                    data=zip_hwp_buffer.getvalue(),
-                    file_name=f"기획예산처_탄소중립_선택보고서_{datetime.now().strftime('%Y%m%d')}.zip",
-                    mime="application/zip",
-                    use_container_width=True
-                )
-            with col_hwp2:
-                st.markdown("<p style='color:#64748B; font-size:0.9rem; padding-top:8px;'>💡 상단 관제 센터 테이블에서 체크박스를 터치하면 결재용 파일셋 빌더에 즉각 자동 누적 반영됩니다.</p>", unsafe_allow_html=True)
-    else:
-        st.markdown("""
-            <div style="text-align:center; padding:5rem; color:#94A3B8;">
-                <p style="font-size:1.2rem;">🏛️ 플랫폼 데이터 초기화 상태입니다.</p>
-                <p style="font-size:0.9rem;">상단의 [빅데이터 동향 수집 및 에이전트 분석 가동] 버튼을 클릭하시면 실시간 인텔리전스 체계가 수립됩니다.</p>
-            </div>
-        """, unsafe_allow_html=True)
+            st.markdown("### 🔍 북마크 안건 심층 AI 행정 분석")
+            render_article_detail_cards(st.session_state.library)
 
-# ── Tab 2: 전체 히스토리 ──
-with tab_history:
-    st.markdown("### 📚 세션 전체 수집 히스토리")
-    st.caption(f"세션 동안 누적 수집된 전체 기사 {len(st.session_state.all_history)}건")
+            st.write("---")
+            st.markdown("### 🖨️ 북마크 안건 HWP 일괄 다운로드")
+            zip_library_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_library_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for item_data in st.session_state.library:
+                    hwp_file_stream = generate_hwp_text_file(item_data)
+                    zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
 
-    if st.session_state.all_history:
-        df_history = pd.DataFrame(st.session_state.all_history)
-        display_cols = ["대분류", "소분류", "분석가능여부", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
-        available_cols = [c for c in display_cols if c in df_history.columns]
-        st.dataframe(
-            df_history[available_cols],
-            hide_index=True,
-            use_container_width=True,
-        )
-    else:
-        st.info("아직 수집된 히스토리가 없습니다. 상단 수집 버튼을 실행해 주세요.")
+            st.download_button(
+                label="📥 북마크 전체 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
+                data=zip_library_buffer.getvalue(),
+                file_name=f"기획예산처_탄소중립_북마크_{datetime.now().strftime('%Y%m%d')}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+        else:
+            st.info("북마크된 기사가 없습니다. 대시보드 테이블의 '북마크' 열에서 기사를 저장해 주세요. 동일 키를 쓰는 팀원들과 공유됩니다.")
 
-# ── Tab 3: 라이브러리 (북마크) ──
-with tab_library:
-    st.markdown("### 🔖 라이브러리 — 북마크 저장 기사")
-    st.caption(f"북마크 저장 {len(st.session_state.library)}건")
-
-    if st.session_state.library:
-        df_library = pd.DataFrame(st.session_state.library)
-        display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]
-        available_cols = [c for c in display_cols if c in df_library.columns]
-        st.dataframe(
-            df_library[available_cols],
-            hide_index=True,
-            use_container_width=True,
-        )
-
-        st.write("---")
-        st.markdown("### 🔍 북마크 안건 심층 AI 행정 분석")
-        render_article_detail_cards(st.session_state.library)
-
-        st.write("---")
-        st.markdown("### 🖨️ 북마크 안건 HWP 일괄 다운로드")
-        zip_library_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_library_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for item_data in st.session_state.library:
-                hwp_file_stream = generate_hwp_text_file(item_data)
-                zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
-
-        st.download_button(
-            label="📥 북마크 전체 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
-            data=zip_library_buffer.getvalue(),
-            file_name=f"기획예산처_탄소중립_북마크_{datetime.now().strftime('%Y%m%d')}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
-    else:
-        st.info("북마크된 기사가 없습니다. 대시보드 테이블의 '북마크' 열에서 기사를 저장해 주세요.")
+else:
+    # ❌ 3가지 인증 정보가 비어있을 때 표출할 메인 보안 락 스크린
+    st.write("---")
+    st.markdown("""
+        <div style="text-align:center; padding:6rem 3rem; background-color:#FFFFFF; border-radius:16px; border:1px solid #E2E8F0; box-shadow: 0 4px 20px rgba(0,0,0,0.02);">
+            <h2 style='color:#0A2540; font-size:2rem; margin-bottom:1rem;'>🔒 시스템 권한 보안 통제 중</h2>
+            <p style='color:#64748B; font-size:1.05rem; line-height:1.6; max-width:600px; margin:0 auto;'>
+                본 인텔리전스 시스템은 승인된 관계자 전용 플랫폼입니다.<br>
+                서비스를 활성화하고 공유 데이터 원격을 가동하려면, <b>좌측 사이드바</b>에 
+                <span style='color:#0A2540; font-weight:600;'>Naver API Client ID, Secret 및 OpenAI API Key</span>를 모두 정확히 입력해 주십시오.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
