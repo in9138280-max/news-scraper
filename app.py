@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 📌 [수정완료] 서버 전역 공동 계정 저장 공간 인프라 (에러 해결)
+# 📌 서버 전역 공동 계정 저장 공간 인프라
 # ----------------------------------------------------
 @st.cache_resource
 def get_global_db():
@@ -591,7 +591,7 @@ def render_article_detail_cards(items):
 if is_authenticated:
     openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
-    # 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출
+    # [수정완료] 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출 (f-string 중괄호 에러 수정)
     if st.session_state.scraped_data:
         df_spike = pd.DataFrame([
             x for x in st.session_state.scraped_data
@@ -604,7 +604,7 @@ if is_authenticated:
                     st.markdown(f"""
                         <div class="premium-spike-alert">
                             <span style="font-size:1.15rem; font-weight:700;">🚨 [동향 경보] 주요 정책 안건 이슈 스파이크 발생</span><br>
-                            현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증}</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
+                            현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -794,7 +794,7 @@ if is_authenticated:
                     zip_hwp_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_hwp_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         for idx in selected_rows:
-                            item_data = st.session_state.scraped_data[idx]
+                            item_data = st.session_state.scraped_data[idx] # 변수 중복 선언문 깔끔하게 수정
                             hwp_file_stream = generate_hwp_text_file(item_data)
                             zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
                     
