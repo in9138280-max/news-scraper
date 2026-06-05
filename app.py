@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from bs4 import BeautifulSoup
 from openai import OpenAI
-import hashlib  # [추가] 3대 키 조합을 안전하게 고유 ID(해시)로 변환하기 위함
+import hashlib
 
 # [Premium UI 가이드] 페이지 레이아웃 및 다크/라이트 하이브리드 인텔리전스 테마 세팅
 st.set_page_config(
@@ -19,13 +19,15 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 📌 [새로 추가] 서버 전역 공동 계정 저장 공간 인프라
+# 📌 [수정완료] 서버 전역 공동 계정 저장 공간 인프라 (에러 해결)
 # ----------------------------------------------------
-if "global_agent_db" not in st.cache_resource:
-    # 구조: { "인증키들_해시조합": [...] } 형태의 실시간 공유용 라이브러리 저장소
-    st.cache_resource.global_agent_db = {}
+@st.cache_resource
+def get_global_db():
+    """앱 전체 사용자가 공유하는 싱글톤 전역 데이터베이스를 생성합니다."""
+    return {}
 
-global_db = st.cache_resource.global_agent_db
+# 전역 공유 저장소 참조 가져오기
+global_db = get_global_db()
 
 # ----------------------------------------------------
 # 💎 PREMIUM BI DASHBOARD BRANDING CSS (돈 쓴 것 같은 UI)
@@ -181,7 +183,7 @@ with header_text_col:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# CORE 시스템 인프라 및 세션 관리 [수정]
+# CORE 시스템 인프라 및 세션 관리
 # ----------------------------------------------------
 if "scraped_data" not in st.session_state:
     st.session_state.scraped_data = []
@@ -190,7 +192,7 @@ if "all_history" not in st.session_state:
 if "library" not in st.session_state:
     st.session_state.library = []
 
-# [리팩토링] 사이드바 자격 인증 및 다량 키워드 설정
+# 사이드바 자격 인증 및 다량 키워드 설정
 st.sidebar.markdown("### 🔐 전산 자격 공동 인증")
 st.sidebar.caption("동일한 3가지 자격 인증키를 기입한 사용자들은 하나의 계정으로 묶여 북마크 라이브러리가 영구 누적 및 동기화됩니다.")
 
@@ -237,7 +239,7 @@ target_keywords = st.sidebar.multiselect(
 )
 
 # ----------------------------------------------------
-# 날짜 파싱 및 48시간 필터 유틸리티 (기존 함수 유지)
+# 날짜 파싱 및 48시간 필터 유틸리티
 # ----------------------------------------------------
 HOURS_48 = timedelta(hours=48)
 
@@ -584,10 +586,9 @@ def render_article_detail_cards(items):
         """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 📌 메인 비즈니스 로직 제어부 [수정 및 울타리 보호 설치]
+# 📌 메인 비즈니스 로직 제어부
 # ----------------------------------------------------
 if is_authenticated:
-    # 3대 핵심 키가 모두 들어와 자격 승인이 완료되었을 때만 시스템 메인 로직 가동
     openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
     # 이슈 스파이크 알림 감지 및 고급형 아웃라인 표출
@@ -603,7 +604,7 @@ if is_authenticated:
                     st.markdown(f"""
                         <div class="premium-spike-alert">
                             <span style="font-size:1.15rem; font-weight:700;">🚨 [동향 경보] 주요 정책 안건 이슈 스파이크 발생</span><br>
-                            현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
+                            현재 데이터 스트리밍 분석 결과 <strong>'{kw}'</strong> 어젠다 관련 언론 보도가 단시간 내 <strong>{count}건 이상 폭증}</strong>했습니다. 예산 심사 및 부처 협의 시 리스크 관리에 유의하십시오.
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -616,7 +617,7 @@ if is_authenticated:
             st.session_state.scraped_data = []
             st.session_state.all_history = []
             if room_key:
-                global_db[room_key] = []  # 인증된 공유 라이브러리도 함께 공장초기화
+                global_db[room_key] = []
             st.session_state.library = []
             st.rerun()
 
@@ -706,10 +707,6 @@ if is_authenticated:
             # Section B: 종합 관제 센터 테두리 테이블
             st.write("---")
             st.markdown("### 📡 실시간 수집 보도자료 종합 관제 센터")
-            st.caption(
-                "최근 48시간 이내 발행 기사만 표시됩니다. "
-                "테이블에서 [선택] 체크 또는 하단 드롭다운으로 기사를 고르면 AI 요약 전문이 표시됩니다."
-            )
 
             df_display["요약"] = df_display["5줄요약"].fillna("").astype(str)
             df_display.insert(0, "선택", False)
@@ -733,11 +730,7 @@ if is_authenticated:
                     "북마크": st.column_config.CheckboxColumn("북마크", default=False, width="small"),
                     "기사제목": st.column_config.TextColumn("기사제목", width="large"),
                     "언론사": st.column_config.TextColumn("언론사", width="small"),
-                    "요약": st.column_config.TextColumn(
-                        "AI 요약",
-                        width="medium",
-                        help="셀에는 요약 미리보기가 표시됩니다. 전체 내용은 하단 [선택된 기사 상세 요약 카드]에서 확인하세요.",
-                    ),
+                    "요약": st.column_config.TextColumn("AI 요약", width="medium"),
                     "대분류": st.column_config.TextColumn("대분류", width="small"),
                     "소분류": st.column_config.TextColumn("소분류", width="small"),
                     "발행일시": st.column_config.TextColumn("발행일시", width="small"),
@@ -757,29 +750,22 @@ if is_authenticated:
                 if row["선택"] and row["URL"] in url_to_idx
             ]
 
-            # Section B-2: 선택된 기사 상세 요약 카드 (테이블 ↔ 실시간 연동)
+            # Section B-2: 선택된 기사 상세 요약 카드
             st.markdown("#### 📑 선택된 기사 상세 요약 카드")
 
             article_labels = [
-                f"[{item['언론사']}] {item['기사제목'][:72]}{'…' if len(item['기사제목']) > 72 else ''}"
-                for item in st.session_state.scraped_data
+                f"[{item['언론사']}] {item['기사제목'][:72]}…" for item in st.session_state.scraped_data
             ]
             article_urls = [item["URL"] for item in st.session_state.scraped_data]
 
             focus_col1, focus_col2 = st.columns([3, 1])
             with focus_col2:
-                st.metric("관제 대상", f"{len(st.session_state.scraped_data)}건", help="48시간 이내 정책 분석 가능 기사")
+                st.metric("관제 대상", f"{len(st.session_state.scraped_data)}건")
 
             if selected_rows:
                 focus_item = st.session_state.scraped_data[selected_rows[0]]
                 with focus_col1:
-                    if len(selected_rows) == 1:
-                        st.caption("테이블 [선택] 체크와 연동된 기사의 AI 요약 전문입니다.")
-                    else:
-                        st.caption(
-                            f"테이블에서 {len(selected_rows)}건 선택됨 👀 "
-                            "첫 번째 선택 기사 요약을 표시합니다. (복수 건은 하단 심층 분석 피드 참조)"
-                        )
+                    st.caption("테이블 [선택] 체크와 연동된 기사의 AI 요약 전문입니다.")
             else:
                 with focus_col1:
                     focus_label = st.selectbox(
@@ -792,10 +778,8 @@ if is_authenticated:
 
             if focus_item:
                 render_focus_summary_card(focus_item)
-                with st.expander("🔗 원문 기사 열기", expanded=False):
-                    st.markdown(f"[{focus_item['기사제목']}]({focus_item['URL']})")
 
-            # Section C: 심층 요약 분석 피드 (복수 선택)
+            # Section C: 심층 요약 분석 피드
             if selected_rows:
                 st.markdown("### 🔎 선택 안건별 심층 AI 행정 분석 피드")
                 selected_items = [st.session_state.scraped_data[idx] for idx in selected_rows]
@@ -810,7 +794,7 @@ if is_authenticated:
                     zip_hwp_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_hwp_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         for idx in selected_rows:
-                            item_data = st.session_data = st.session_state.scraped_data[idx]
+                            item_data = st.session_state.scraped_data[idx]
                             hwp_file_stream = generate_hwp_text_file(item_data)
                             zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
                     
@@ -848,14 +832,11 @@ if is_authenticated:
         else:
             st.info("아직 수집된 히스토리가 없습니다. 상단 수집 버튼을 실행해 주세요.")
 
-    # ── Tab 3: 라이브러리 (북마크) [수정결합 파트] ──
+    # ── Tab 3: 라이브러리 (북마크) ──
     with tab_library:
         st.markdown("### 📥 라이브러리 · 북마크 저장 기사")
         st.caption(f"공동 그룹 인증 계정에 실시간 누적 저장된 항목수: {len(st.session_state.library)}건")
         
-        # ----------------------------------------------------
-        # 📌 [두 번째 주신 소스코드 본문 결합]
-        # ----------------------------------------------------
         if st.session_state.library:
             df_library = pd.DataFrame(st.session_state.library)
             display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]
