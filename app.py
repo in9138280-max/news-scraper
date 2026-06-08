@@ -815,70 +815,92 @@ if is_authenticated:
                 </div>
             """, unsafe_allow_html=True)
 
-    # ── Tab 2: 전체 히스토리 ──
-    with tab_history:
-        st.markdown("### 📂 세션 전체 수집 히스토리")
-        st.caption(f"세션 동안 누적 수집된 전체 기사 {len(st.session_state.all_history)}건")
+  # ── Tab 2: 전체 히스토리 ──
+with tab_history:
+    st.markdown("### 📂 세션 전체 수집 히스토리")
+    st.caption(f"세션 동안 누적 수집된 전체 기사 {len(st.session_state.all_history)}건")
 
-        if st.session_state.all_history:
-            df_history = pd.DataFrame(st.session_state.all_history)
-            display_cols = ["대분류", "소분류", "분석가능여부", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
-            available_cols = [c for c in display_cols if c in df_history.columns]
-            st.dataframe(
-                df_history[available_cols],
-                hide_index=True,
-                use_container_width=True,
-            )
-        else:
-            st.info("아직 수집된 히스토리가 없습니다. 상단 수집 버튼을 실행해 주세요.")
-
-    # ── Tab 3: 라이브러리 (북마크) ──
-    with tab_library:
-        st.markdown("### 📥 라이브러리 · 북마크 저장 기사")
-        st.caption(f"공동 그룹 인증 계정에 실시간 누적 저장된 항목수: {len(st.session_state.library)}건")
+    if st.session_state.all_history:
+        # 🌟 수집 당시 신규 기사 처리 예시 (백엔드 스크래퍼 연동부 참고용)
+        # 만약 새로 수집 프로세스가 돌 때 아래처럼 '🆕 '을 붙여주시면 표에 자동 반영됩니다.
+        # item['기사제목'] = f"🆕 {item['기사제목']}"
         
-        if st.session_state.library:
-            df_library = pd.DataFrame(st.session_state.library)
-            display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]
-            available_cols = [c for c in display_cols if c in df_library.columns]
-            st.dataframe(
-                df_library[available_cols],
-                hide_index=True,
-                use_container_width=True,
-            )
+        df_history = pd.DataFrame(st.session_state.all_history)
+        
+        # 🌟 기능 추가 1: 발행일시 기준 내림차순(최신순) 정렬
+        if "발행일시" in df_history.columns:
+            df_history = df_history.sort_values(by="발행일시", ascending=False)
+            
+        display_cols = ["대분류", "소분류", "분석가능여부", "기사제목", "언론사", "발행일시", "수집일시", "수집키워드", "URL"]
+        available_cols = [c for c in display_cols if c in df_history.columns]
+        st.dataframe(
+            df_history[available_cols],
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.info("아직 수집된 히스토리가 없습니다. 상단 수집 버튼을 실행해 주세요.")
 
-            st.write("---")
-            st.markdown("### 🔍 북마크 안건 심층 AI 행정 분석")
-            render_article_detail_cards(st.session_state.library)
+# ── Tab 3: 라이브러리 (북마크) ──
+with tab_library:
+    st.markdown("### 📥 라이브러리 · 북마크 저장 기사")
+    st.caption(f"공동 그룹 인증 계정에 실시간 누적 저장된 항목수: {len(st.session_state.library)}건")
+    
+    if st.session_state.library:
+        df_library = pd.DataFrame(st.session_state.library)
+        
+        # 🌟 기능 추가 2: 발행일시 기준 내림차순(최신순) 정렬
+        if "발행일시" in df_library.columns:
+            df_library = df_library.sort_values(by="발행일시", ascending=False)
+            
+        display_cols = ["대분류", "소분류", "기사제목", "언론사", "발행일시", "수집키워드", "URL"]
+        available_cols = [c for c in display_cols if c in df_library.columns]
+        st.dataframe(
+            df_library[available_cols],
+            hide_index=True,
+            use_container_width=True,
+        )
 
-            st.write("---")
-            st.markdown("### 🖨️ 북마크 안건 HWP 일괄 다운로드")
-            zip_library_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_library_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for item_data in st.session_state.library:
-                    hwp_file_stream = generate_hwp_text_file(item_data)
-                    zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
+        # 🌟 기능 추가 3: 북마크 개별 해제 기능 (정렬 순서 연동)
+        st.write("")
+        st.markdown("#### 🛠️ 북마크 관리 (개별 해제)")
+        with st.expander("📌 현재 북마크된 안건 해제하기", expanded=False):
+            # 최신순 정렬된 딕셔너리 리스트 추출
+            sorted_library = df_library.to_dict(orient="records")
+            for idx, item in enumerate(sorted_library):
+                col_title, col_btn = st.columns([8, 2])
+                with col_title:
+                    # 제목이 길면 말줄임표 처리하여 깔끔하게 노출
+                    short_title = item['기사제목'][:40] + "..." if len(item['기사제목']) > 40 else item['기사제목']
+                    st.write(f"• {short_title} ({item.get('언론사', '-')})")
+                with col_btn:
+                    # 고유성 확보를 위해 URL과 인덱스를 조합한 key 지정
+                    if st.button("❌ 해제", key=f"del_btn_{idx}_{item.get('URL')}", use_container_width=True):
+                        # URL 기준으로 기존 세션 라이브러리 리스트에서 제외 필터링
+                        st.session_state.library = [
+                            x for x in st.session_state.library if x.get('URL') != item.get('URL')
+                        ]
+                        st.toast("북마크가 해제되었습니다.", icon="🗑️")
+                        st.rerun() # 실시간 리렌더링으로 즉시 반영
 
-            st.download_button(
-                label="📥 북마크 전체 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
-                data=zip_library_buffer.getvalue(),
-                file_name=f"기획예산처_탄소중립_북마크_{datetime.now().strftime('%Y%m%d')}.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
-        else:
-            st.info("북마크된 기사가 없습니다. 대시보드 테이블의 '북마크' 열에서 기사를 저장해 주세요. 동일 키를 쓰는 팀원들과 공유됩니다.")
+        st.write("---")
+        st.markdown("### 🔍 북마크 안건 심층 AI 행정 분석")
+        render_article_detail_cards(st.session_state.library)
 
-else:
-    # ❌ 3가지 인증 정보가 비어있을 때 표출할 메인 보안 락 스크린
-    st.write("---")
-    st.markdown("""
-        <div style="text-align:center; padding:6rem 3rem; background-color:#FFFFFF; border-radius:16px; border:1px solid #E2E8F0; box-shadow: 0 4px 20px rgba(0,0,0,0.02);">
-            <h2 style='color:#0A2540; font-size:2rem; margin-bottom:1rem;'>🔒 시스템 권한 보안 통제 중</h2>
-            <p style='color:#64748B; font-size:1.05rem; line-height:1.6; max-width:600px; margin:0 auto;'>
-                본 인텔리전스 시스템은 승인된 관계자 전용 플랫폼입니다.<br>
-                서비스를 활성화하고 공유 데이터 원격을 가동하려면, <b>좌측 사이드바</b>에 
-                <span style='color:#0A2540; font-weight:600;'>Naver API Client ID, Secret 및 OpenAI API Key</span>를 모두 정확히 입력해 주십시오.
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
+        st.write("---")
+        st.markdown("### 🖨️ 북마크 안건 HWP 일괄 다운로드")
+        zip_library_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_library_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for item_data in st.session_state.library:
+                hwp_file_stream = generate_hwp_text_file(item_data)
+                zip_file.writestr(item_data['파일명'], hwp_file_stream.getvalue())
+
+        st.download_button(
+            label="📥 북마크 전체 표준 공문서(HWP) 파일셋 다운로드 (.zip)",
+            data=zip_library_buffer.getvalue(),
+            file_name=f"기획예산처_탄소중립_북마크_{datetime.now().strftime('%Y%m%d')}.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+    else:
+        st.info("북마크된 기사가 없습니다. 대시보드 테이블의 '북마크' 열에서 기사를 저장해 주세요. 동일 키를 쓰는 팀원들과 공유됩니다.")
